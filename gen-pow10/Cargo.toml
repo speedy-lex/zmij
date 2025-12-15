@@ -1,0 +1,13 @@
+[package]
+name = "gen-pow10"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "gen-pow10"
+path = "main.rs"
+
+[dependencies]
+num-bigint = "0.4"
+num-integer = "0.1"
