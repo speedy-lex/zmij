@@ -20,7 +20,6 @@
 #[cfg(test)]
 mod tests;
 
-use core::ffi::CStr;
 use core::mem::{self, MaybeUninit};
 use core::ptr;
 use core::slice;
@@ -791,7 +790,7 @@ unsafe fn write_significand(mut buffer: *mut u8, value: u64) -> *mut u8 {
 }
 
 // Writes the decimal FP number dec_sig * 10**dec_exp to buffer.
-unsafe fn write(mut buffer: *mut u8, dec_sig: u64, mut dec_exp: i32) {
+unsafe fn write(mut buffer: *mut u8, dec_sig: u64, mut dec_exp: i32) -> *mut u8 {
     dec_exp += 15 + i32::from(dec_sig >= const { 10u64.pow(16) });
 
     let start = buffer;
@@ -820,12 +819,13 @@ unsafe fn write(mut buffer: *mut u8, dec_sig: u64, mut dec_exp: i32) {
         buffer = buffer.add(usize::from(dec_exp >= 100));
         ptr::copy_nonoverlapping(digits2(bb as usize), buffer, 2);
         buffer.add(2).write(b'\0');
+        buffer.add(2)
     }
 }
 
 /// Writes the shortest correctly rounded decimal representation of `value` to
 /// `buffer`. `buffer` should point to a buffer of size `buffer_size` or larger.
-unsafe fn dtoa(value: f64, mut buffer: *mut u8) {
+unsafe fn dtoa(value: f64, mut buffer: *mut u8) -> *mut u8 {
     const NUM_BITS: u32 = mem::size_of::<f64>() as u32 * 8;
     let bits = value.to_bits();
 
@@ -845,7 +845,7 @@ unsafe fn dtoa(value: f64, mut buffer: *mut u8) {
     let mut bin_exp = (bits >> NUM_SIG_BITS) as i32 & EXP_MASK; // binary exponent
     if ((bin_exp + 1) & EXP_MASK) <= 1 {
         if bin_exp != 0 {
-            unsafe {
+            return unsafe {
                 ptr::copy_nonoverlapping(
                     if bin_sig == 0 {
                         c"inf".as_ptr().cast::<u8>()
@@ -855,14 +855,14 @@ unsafe fn dtoa(value: f64, mut buffer: *mut u8) {
                     buffer,
                     4,
                 );
-            }
-            return;
+                buffer.add(3)
+            };
         }
         if bin_sig == 0 {
-            unsafe {
+            return unsafe {
                 ptr::copy_nonoverlapping(c"0".as_ptr().cast::<u8>(), buffer, 2);
-            }
-            return;
+                buffer.add(1)
+            };
         }
         // Handle subnormals.
         bin_sig |= IMPLICIT_BIT;
@@ -876,8 +876,7 @@ unsafe fn dtoa(value: f64, mut buffer: *mut u8) {
     if (-NUM_SIG_BITS..0).contains(&bin_exp) {
         let f = bin_sig >> -bin_exp;
         if (f << -bin_exp) == bin_sig {
-            unsafe { write(buffer, f, 0) }
-            return;
+            return unsafe { write(buffer, f, 0) };
         }
     }
 
@@ -930,7 +929,7 @@ unsafe fn dtoa(value: f64, mut buffer: *mut u8) {
             let round = (upper >> NUM_FRACTIONAL_BITS) >= 10;
             let shorter = integral - digit + u64::from(round) * 10;
             let longer = integral + u64::from(fractional >= (1 << 63));
-            unsafe {
+            return unsafe {
                 write(
                     buffer,
                     if half_ulp >= rem10 || round {
@@ -939,9 +938,8 @@ unsafe fn dtoa(value: f64, mut buffer: *mut u8) {
                         longer
                     },
                     dec_exp,
-                );
-            }
-            return;
+                )
+            };
         }
     }
 
@@ -960,8 +958,7 @@ unsafe fn dtoa(value: f64, mut buffer: *mut u8) {
     // It is less or equal to the upper bound by construction.
     let shorter = 10 * ((upper >> 2) / 10);
     if (shorter << 2) >= lower {
-        unsafe { write(buffer, shorter, dec_exp) }
-        return;
+        return unsafe { write(buffer, shorter, dec_exp) };
     }
 
     let scaled_sig = umul192_upper64_inexact_to_odd(pow10_hi, pow10_lo, bin_sig_shifted << shift);
@@ -982,7 +979,7 @@ unsafe fn dtoa(value: f64, mut buffer: *mut u8) {
                 dec_sig_over
             },
             dec_exp,
-        );
+        )
     }
 }
 
@@ -998,8 +995,9 @@ impl Buffer {
 
     pub fn format(&mut self, f: f64) -> &str {
         unsafe {
-            dtoa(f, self.bytes.as_mut_ptr().cast::<u8>());
-            let len = CStr::from_ptr(self.bytes.as_ptr().cast::<i8>()).count_bytes();
+            let end = dtoa(f, self.bytes.as_mut_ptr().cast::<u8>());
+            debug_assert_eq!(*end, b'\0');
+            let len = end.offset_from_unsigned(self.bytes.as_ptr().cast::<u8>());
             let slice = slice::from_raw_parts(self.bytes.as_ptr().cast::<u8>(), len);
             str::from_utf8_unchecked(slice)
         }
