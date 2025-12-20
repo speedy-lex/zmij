@@ -839,9 +839,9 @@ unsafe fn dtoa(value: f64, mut buffer: *mut u8) {
             unsafe {
                 ptr::copy_nonoverlapping(
                     if bin_sig == 0 {
-                        b"inf\0".as_ptr()
+                        c"inf".as_ptr().cast::<u8>()
                     } else {
-                        b"nan\0".as_ptr()
+                        c"nan".as_ptr().cast::<u8>()
                     },
                     buffer,
                     4,
@@ -851,7 +851,7 @@ unsafe fn dtoa(value: f64, mut buffer: *mut u8) {
         }
         if bin_sig == 0 {
             unsafe {
-                ptr::copy_nonoverlapping(b"0\0".as_ptr(), buffer, 2);
+                ptr::copy_nonoverlapping(c"0".as_ptr().cast::<u8>(), buffer, 2);
             }
             return;
         }
