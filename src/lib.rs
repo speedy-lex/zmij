@@ -1,6 +1,6 @@
 //! A double-to-string conversion algorithm based on [Schubfach] and [yy].
 //!
-//! This Rust implementation is a line-by-line of Victor Zverovich's
+//! This Rust implementation is a line-by-line port of Victor Zverovich's
 //! implementation in C++, <https://github.com/vitaut/zmij>.
 //!
 //! [Schubfach]: https://fmt.dev/papers/Schubfach4.pdf
