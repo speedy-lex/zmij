@@ -764,7 +764,7 @@ unsafe fn write_significand(mut buffer: *mut u8, value: u64) -> *mut u8 {
 
     let start = buffer;
     unsafe {
-        buffer.write(b'0' + a as u8);
+        *buffer = b'0' + a as u8;
         buffer = buffer.add(usize::from(a != 0));
     }
 
@@ -800,12 +800,12 @@ unsafe fn write(mut buffer: *mut u8, dec_sig: u64, mut dec_exp: i32) -> *mut u8 
     let start = buffer;
     unsafe {
         buffer = write_significand(buffer.add(1), dec_sig);
-        start.write(start.add(1).read());
-        start.add(1).write(b'.');
+        *start = *start.add(1);
+        *start.add(1) = b'.';
     }
 
     unsafe {
-        buffer.write(b'e');
+        *buffer = b'e';
         buffer = buffer.add(1);
     }
     let mut sign = b'+';
@@ -814,12 +814,12 @@ unsafe fn write(mut buffer: *mut u8, dec_sig: u64, mut dec_exp: i32) -> *mut u8 
         dec_exp = -dec_exp;
     }
     unsafe {
-        buffer.write(sign);
+        *buffer = sign;
         buffer = buffer.add(1);
     }
     let (a, bb) = divmod100(dec_exp.cast_unsigned());
     unsafe {
-        buffer.write(b'0' + a as u8);
+        *buffer = b'0' + a as u8;
         buffer = buffer.add(usize::from(dec_exp >= 100));
         buffer.cast::<u16>().write_unaligned(*digits2(bb as usize));
         buffer.add(2)
@@ -833,7 +833,7 @@ unsafe fn dtoa(value: f64, mut buffer: *mut u8) -> *mut u8 {
     let bits = value.to_bits();
 
     unsafe {
-        buffer.write(b'-');
+        *buffer = b'-';
         buffer = buffer.add((bits >> (NUM_BITS - 1)) as usize);
     }
 
@@ -849,7 +849,7 @@ unsafe fn dtoa(value: f64, mut buffer: *mut u8) -> *mut u8 {
     if bin_exp == 0 {
         if bin_sig == 0 {
             return unsafe {
-                buffer.write(b'0');
+                *buffer = b'0';
                 buffer.add(1)
             };
         }
