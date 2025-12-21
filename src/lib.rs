@@ -977,29 +977,31 @@ unsafe fn dtoa(value: f64, mut buffer: *mut u8) -> *mut u8 {
     let end = unsafe { write_significand(buffer.add(1), dec_sig) };
     let length = unsafe { end.offset_from_unsigned(buffer.add(1)) };
 
-    if (length as i32 - 1..=15).contains(&dec_exp) {
-        // 1234e7 -> 12340000000.0
-        return unsafe {
-            ptr::copy(buffer.add(1), buffer, length);
-            ptr::write_bytes(buffer.add(length), b'0', dec_exp as usize + 3 - length);
-            *buffer.add(dec_exp as usize + 1) = b'.';
-            buffer.add(dec_exp as usize + 3)
-        };
-    } else if (0..=15).contains(&dec_exp) {
-        // 1234e-2 -> 12.34
-        return unsafe {
-            ptr::copy(buffer.add(1), buffer, dec_exp as usize + 1);
-            *buffer.add(dec_exp as usize + 1) = b'.';
-            buffer.add(length + 1)
-        };
-    } else if (-5..=-1).contains(&dec_exp) {
-        // 1234e-6 -> 0.001234
-        return unsafe {
-            ptr::copy(buffer.add(1), buffer.add((1 - dec_exp) as usize), length);
-            ptr::write_bytes(buffer, b'0', (1 - dec_exp) as usize);
-            *buffer.add(1) = b'.';
-            buffer.add((1 - dec_exp) as usize + length)
-        };
+    if (-5..=15).contains(&dec_exp) {
+        if length as i32 - 1 <= dec_exp {
+            // 1234e7 -> 12340000000.0
+            return unsafe {
+                ptr::copy(buffer.add(1), buffer, length);
+                ptr::write_bytes(buffer.add(length), b'0', dec_exp as usize + 3 - length);
+                *buffer.add(dec_exp as usize + 1) = b'.';
+                buffer.add(dec_exp as usize + 3)
+            };
+        } else if 0 <= dec_exp {
+            // 1234e-2 -> 12.34
+            return unsafe {
+                ptr::copy(buffer.add(1), buffer, dec_exp as usize + 1);
+                *buffer.add(dec_exp as usize + 1) = b'.';
+                buffer.add(length + 1)
+            };
+        } else {
+            // 1234e-6 -> 0.001234
+            return unsafe {
+                ptr::copy(buffer.add(1), buffer.add((1 - dec_exp) as usize), length);
+                ptr::write_bytes(buffer, b'0', (1 - dec_exp) as usize);
+                *buffer.add(1) = b'.';
+                buffer.add((1 - dec_exp) as usize + length)
+            };
+        }
     }
 
     unsafe {
