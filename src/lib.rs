@@ -901,6 +901,9 @@ unsafe fn dtoa(value: f64, mut buffer: *mut u8) -> *mut u8 {
         const TEN: u64 = 10 << NUM_FRACTIONAL_BITS;
         // Fixed-point remainder of the scaled significand modulo 10.
         let rem10 = (digit << NUM_FRACTIONAL_BITS) | (fractional >> 4);
+        // dec_exp is chosen such that 10**dec_exp <= 2**bin_exp < 10**(dec_exp + 1)
+        // Since 1ulp = 2**bin_exp it will be in the range [1, 10) after scaling
+        // by 10**dec_exp.
         let half_ulp = pow10_hi >> (5 - exp_shift);
         let upper = rem10 + half_ulp;
 
