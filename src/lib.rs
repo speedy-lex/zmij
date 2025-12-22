@@ -802,9 +802,7 @@ unsafe fn write_significand(mut buffer: *mut u8, value: u64) -> *mut u8 {
         buffer = buffer.add(usize::from(a != 0));
     }
 
-    // 0x30 == '0'
-    const ZEROBITS: u64 = 0x30303030_30303030;
-
+    const ZEROBITS: u64 = 0x30303030_30303030; // 0x30 == '0'
     let bcd = to_bcd8(u64::from(bbccddee));
     let bits = bcd | ZEROBITS;
     unsafe {
@@ -972,9 +970,9 @@ unsafe fn dtoa<Float>(value: Float, mut buffer: *mut u8) -> *mut u8
 where
     Float: traits::Float,
 {
+    let num_bits = mem::size_of::<Float>() as i32 * 8;
     let bits = value.to_bits();
 
-    let num_bits = mem::size_of::<Float>() as i32 * 8;
     unsafe {
         *buffer = b'-';
         buffer = buffer.add((bits >> (num_bits - 1)).into() as usize);
