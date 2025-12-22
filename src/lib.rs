@@ -65,16 +65,6 @@ const NAN: &str = "NaN";
 const INFINITY: &str = "inf";
 const NEG_INFINITY: &str = "-inf";
 
-const _: () = {
-    let static_data = size_of_val(&POW10_SIGNIFICANDS) + size_of_val(&DIGITS2);
-    assert!(static_data == 10072); // 9.8K
-
-    // Replace with core::mem::size_of_val in Rust 1.85+.
-    const fn size_of_val<T>(_: &T) -> usize {
-        mem::size_of::<T>()
-    }
-};
-
 #[allow(non_camel_case_types)]
 struct uint128 {
     hi: u64,
