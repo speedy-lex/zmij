@@ -786,11 +786,20 @@ fn to_bcd8(abcdefgh: u64) -> u64 {
     a_b_c_d_e_f_g_h.to_be()
 }
 
+unsafe fn write_if_nonzero(buffer: *mut u8, digit: u32) -> *mut u8 {
+    unsafe {
+        *buffer = b'0' + digit as u8;
+        buffer.add(usize::from(digit != 0))
+    }
+}
+
 unsafe fn write8(buffer: *mut u8, value: u64) {
     unsafe {
         buffer.cast::<u64>().write_unaligned(value);
     }
 }
+
+const ZEROS: u64 = 0x30303030_30303030; // 0x30 == '0'
 
 // Writes a significand consisting of up to 17 decimal digits (16-17 for
 // normals) and removes trailing zeros.
@@ -800,27 +809,20 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
     // digit a can be zero.
     let abbccddee = (value / 100_000_000) as u32;
     let ffgghhii = (value % 100_000_000) as u32;
-    let a = abbccddee / 100_000_000;
-    let bbccddee = abbccddee % 100_000_000;
-
     unsafe {
-        *buffer = b'0' + a as u8;
-        buffer = buffer.add(usize::from(a != 0));
+        buffer = write_if_nonzero(buffer, abbccddee / 100_000_000);
     }
-
-    const ZEROBITS: u64 = 0x30303030_30303030; // 0x30 == '0'
-    let bcd = to_bcd8(u64::from(bbccddee));
+    let bcd = to_bcd8(u64::from(abbccddee % 100_000_000));
     unsafe {
-        write8(buffer, bcd | ZEROBITS);
+        write8(buffer, bcd | ZEROS);
     }
     if ffgghhii == 0 {
         return unsafe { buffer.add(count_trailing_nonzeros(bcd)) };
     }
-    buffer = unsafe { buffer.add(8) };
     let bcd = to_bcd8(u64::from(ffgghhii));
     unsafe {
-        write8(buffer, bcd | ZEROBITS);
-        buffer.add(count_trailing_nonzeros(bcd))
+        write8(buffer.add(8), bcd | ZEROS);
+        buffer.add(8).add(count_trailing_nonzeros(bcd))
     }
 }
 
@@ -828,16 +830,12 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
 // and removes trailing zeros.
 #[cfg_attr(feature = "no-panic", no_panic)]
 unsafe fn write_significand9(mut buffer: *mut u8, value: u32) -> *mut u8 {
-    let a = value / 100_000_000;
     unsafe {
-        *buffer = b'0' + a as u8;
-        buffer = buffer.add(usize::from(a != 0));
+        buffer = write_if_nonzero(buffer, value / 100_000_000);
     }
-
-    const ZEROBITS: u64 = 0x30303030_30303030; // 0x30 == '0'
     let bcd = to_bcd8(u64::from(value % 100_000_000));
     unsafe {
-        write8(buffer, bcd | ZEROBITS);
+        write8(buffer, bcd | ZEROS);
         buffer.add(count_trailing_nonzeros(bcd))
     }
 }
