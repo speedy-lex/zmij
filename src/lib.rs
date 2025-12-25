@@ -1025,7 +1025,7 @@ where
 /// Writes the shortest correctly rounded decimal representation of `value` to
 /// `buffer`. `buffer` should point to a buffer of size `buffer_size` or larger.
 #[cfg_attr(feature = "no-panic", no_panic)]
-unsafe fn to_string<Float>(value: Float, mut buffer: *mut u8) -> *mut u8
+unsafe fn write<Float>(value: Float, mut buffer: *mut u8) -> *mut u8
 where
     Float: traits::Float,
 {
@@ -1251,7 +1251,7 @@ mod private {
 
         #[cfg_attr(feature = "no-panic", inline)]
         unsafe fn write_to_zmij_buffer(self, buffer: *mut u8) -> *mut u8 {
-            unsafe { crate::to_string(self, buffer) }
+            unsafe { crate::write(self, buffer) }
         }
     }
 
@@ -1280,7 +1280,7 @@ mod private {
 
         #[cfg_attr(feature = "no-panic", inline)]
         unsafe fn write_to_zmij_buffer(self, buffer: *mut u8) -> *mut u8 {
-            unsafe { crate::to_string(self, buffer) }
+            unsafe { crate::write(self, buffer) }
         }
     }
 }
