@@ -937,7 +937,7 @@ where
         // Fixed-point remainder of the scaled significand modulo 10.
         let rem10 = (digit << num_fractional_bits) | (fractional >> num_integral_bits);
         // dec_exp is chosen so that 10**dec_exp <= 2**bin_exp < 10**(dec_exp + 1).
-        // Since 1ulp == 2**bin_exp it will be in the range [1, 10) after scaling
+        // Since 1ulp == 2**bin_exp it will be in the range [1, 10) after division
         // by 10**dec_exp. Add 1 to combine the shift with division by two.
         let half_ulp10 = pow10_hi >> (num_integral_bits - exp_shift + 1);
         let upper = rem10 + half_ulp10;
