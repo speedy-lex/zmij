@@ -953,11 +953,11 @@ where
             // Near-boundary case for rounding to nearest 10.
             ten.wrapping_sub(upper) > 1
         } {
-            let round = (upper >> num_fractional_bits) >= 10;
-            let shorter = integral.into() - digit + u64::from(round) * 10;
+            let round_up = (upper >> num_fractional_bits) >= 10;
+            let shorter = integral.into() - digit + u64::from(round_up) * 10;
             let longer = integral.into() + u64::from(fractional >= (1 << 63));
             return fp {
-                sig: if rem10 <= scaled_half_ulp || round {
+                sig: if rem10 <= scaled_half_ulp || round_up {
                     shorter
                 } else {
                     longer
