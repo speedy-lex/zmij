@@ -915,8 +915,8 @@ where
 
     let num_bits = mem::size_of::<UInt>() as i32 * 8;
     if regular && !subnormal {
-        let integral; // integral part of pow10 * bin_sig
-        let fractional; // fractional part of pow10 * bin_sig
+        let integral; // integral part of bin_sig * pow10
+        let fractional; // fractional part of bin_sig * pow10
         if num_bits == 64 {
             let result = umul192_upper128(pow10_hi, pow10_lo, (bin_sig << exp_shift).into());
             integral = UInt::truncate(result.hi);
@@ -936,18 +936,20 @@ where
         let ten = 10u64 << num_fractional_bits;
         // Fixed-point remainder of the scaled significand modulo 10.
         let rem10 = (digit << num_fractional_bits) | (fractional >> num_integral_bits);
+
+        // scaled_half_ulp = 1 * pow10 in the fixed-point format.
         // dec_exp is chosen so that 10**dec_exp <= 2**bin_exp < 10**(dec_exp + 1).
-        // Since 1ulp == 2**bin_exp it will be in the range [1, 10) after division
+        // Since 1ulp == 2**bin_exp it will be in the range [1, 10) after scaling
         // by 10**dec_exp. Add 1 to combine the shift with division by two.
-        let half_ulp10 = pow10_hi >> (num_integral_bits - exp_shift + 1);
-        let upper = rem10 + half_ulp10;
+        let scaled_half_ulp = pow10_hi >> (num_integral_bits - exp_shift + 1);
+        let upper = rem10 + scaled_half_ulp;
 
         // An optimization from yy by Yaoyuan Guo:
         if {
             // Exact half-ulp tie when rounding to nearest integer.
             fractional != (1 << 63) &&
             // Exact half-ulp tie when rounding to nearest 10.
-            rem10 != half_ulp10 &&
+            rem10 != scaled_half_ulp &&
             // Near-boundary case for rounding to nearest 10.
             ten.wrapping_sub(upper) > 1
         } {
@@ -955,7 +957,7 @@ where
             let shorter = integral.into() - digit + u64::from(round) * 10;
             let longer = integral.into() + u64::from(fractional >= (1 << 63));
             return fp {
-                sig: if rem10 <= half_ulp10 || round {
+                sig: if rem10 <= scaled_half_ulp || round {
                     shorter
                 } else {
                     longer
