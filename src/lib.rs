@@ -41,7 +41,7 @@
 //! ![performance](https://raw.githubusercontent.com/dtolnay/zmij/master/dtoa-benchmark.png)
 
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/zmij/0.1.10")]
+#![doc(html_root_url = "https://docs.rs/zmij/0.1.11")]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![allow(
     clippy::blocks_in_conditions,
