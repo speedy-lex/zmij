@@ -945,7 +945,7 @@ where
         // Fixed-point remainder of the scaled significand modulo 10.
         let scaled_sig_mod10 = (digit << num_fractional_bits) | (fractional >> num_integral_bits);
 
-        // scaled_half_ulp = 1 * pow10 in the fixed-point format.
+        // scaled_half_ulp = 0.5 * pow10 in the fixed-point format.
         // dec_exp is chosen so that 10**dec_exp <= 2**bin_exp < 10**(dec_exp + 1).
         // Since 1ulp == 2**bin_exp it will be in the range [1, 10) after scaling
         // by 10**dec_exp. Add 1 to combine the shift with division by two.
