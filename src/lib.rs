@@ -56,7 +56,8 @@
     clippy::redundant_else,
     clippy::similar_names,
     clippy::too_many_lines,
-    clippy::unreadable_literal
+    clippy::unreadable_literal,
+    clippy::wildcard_imports
 )]
 
 #[cfg(test)]
