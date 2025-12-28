@@ -67,7 +67,6 @@ mod dtoa_test {
 
     #[test]
     fn nan() {
-        assert_eq!(dtoa(f64::NAN.copysign(1.0)), "NaN");
         assert_eq!(dtoa(f64::NAN.copysign(-1.0)), "NaN");
     }
 
@@ -88,6 +87,12 @@ mod dtoa_test {
         // Only an overestimate is in the rounding region (w in Schubfach).
         assert_eq!(dtoa(6.079537928711555e+61), "6.079537928711555e+61");
     }
+
+    #[test]
+    fn null_terminated() {
+        assert_eq!(dtoa(9.061488e15), "9061488000000000.0");
+        assert_eq!(dtoa(f64::NAN.copysign(1.0)), "NaN");
+    }
 }
 
 mod ftoa_test {
@@ -96,7 +101,6 @@ mod ftoa_test {
     #[test]
     fn normal() {
         assert_eq!(ftoa(6.62607e-34), "6.62607e-34");
-        assert_eq!(ftoa(9.061488e15), "9.061488e+15");
         assert_eq!(ftoa(1.342178e+08), "134217800.0");
         assert_eq!(ftoa(1.3421781e+08), "134217810.0");
     }
