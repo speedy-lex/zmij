@@ -951,11 +951,12 @@ where
         // by 10**dec_exp. Add 1 to combine the shift with division by two.
         let scaled_half_ulp = pow10_hi >> (num_integral_bits - exp_shift + 1);
         let upper = scaled_sig_mod10 + scaled_half_ulp;
+        const HALF_ULP: u64 = 1 << 63;
 
         // An optimization from yy by Yaoyuan Guo:
         if {
             // Exact half-ulp tie when rounding to nearest integer.
-            fractional != (1 << 63) &&
+            fractional != HALF_ULP &&
             // Exact half-ulp tie when rounding to nearest 10.
             scaled_sig_mod10 != scaled_half_ulp &&
             // Near-boundary case for rounding to nearest 10.
@@ -963,7 +964,7 @@ where
         } {
             let round_up = upper >= ten;
             let shorter = integral.into() - digit + u64::from(round_up) * 10;
-            let longer = integral.into() + u64::from(fractional >= (1 << 63));
+            let longer = integral.into() + u64::from(fractional >= HALF_ULP);
             let use_shorter = scaled_sig_mod10 <= scaled_half_ulp || round_up;
             return fp {
                 sig: if use_shorter { shorter } else { longer },
