@@ -98,16 +98,16 @@ trait FloatTraits: traits::Float {
     const EXP_MASK: i32 = (1 << Self::NUM_EXP_BITS) - 1;
     const EXP_BIAS: i32 = (1 << (Self::NUM_EXP_BITS - 1)) - 1;
 
-    type UInt: traits::UInt;
-    const IMPLICIT_BIT: Self::UInt;
+    type SigType: traits::UInt;
+    const IMPLICIT_BIT: Self::SigType;
 
-    fn to_bits(self) -> Self::UInt;
+    fn to_bits(self) -> Self::SigType;
 
-    fn get_sig(bits: Self::UInt) -> Self::UInt {
-        bits & (Self::IMPLICIT_BIT - Self::UInt::from(1))
+    fn get_sig(bits: Self::SigType) -> Self::SigType {
+        bits & (Self::IMPLICIT_BIT - Self::SigType::from(1))
     }
 
-    fn get_exp(bits: Self::UInt) -> i32 {
+    fn get_exp(bits: Self::SigType) -> i32 {
         (bits >> Self::NUM_SIG_BITS).into() as i32 & Self::EXP_MASK
     }
 }
@@ -116,9 +116,9 @@ impl FloatTraits for f32 {
     const NUM_BITS: i32 = 32;
     const IMPLICIT_BIT: u32 = 1 << Self::NUM_SIG_BITS;
 
-    type UInt = u32;
+    type SigType = u32;
 
-    fn to_bits(self) -> Self::UInt {
+    fn to_bits(self) -> Self::SigType {
         self.to_bits()
     }
 }
@@ -127,9 +127,9 @@ impl FloatTraits for f64 {
     const NUM_BITS: i32 = 64;
     const IMPLICIT_BIT: u64 = 1 << Self::NUM_SIG_BITS;
 
-    type UInt = u64;
+    type SigType = u64;
 
-    fn to_bits(self) -> Self::UInt {
+    fn to_bits(self) -> Self::SigType {
         self.to_bits()
     }
 }
@@ -1231,10 +1231,10 @@ where
 
     let mut bin_sig = Float::get_sig(bits); // binary significand
     let mut bin_exp = Float::get_exp(bits); // binary exponent
-    let mut regular = bin_sig != Float::UInt::from(0);
+    let mut regular = bin_sig != Float::SigType::from(0);
     let mut subnormal = false;
     if bin_exp == 0 {
-        if bin_sig == Float::UInt::from(0) {
+        if bin_sig == Float::SigType::from(0) {
             return unsafe {
                 *buffer = b'0';
                 *buffer.add(1) = b'.';
