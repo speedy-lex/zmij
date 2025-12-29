@@ -1033,12 +1033,12 @@ unsafe fn write_significand9(mut buffer: *mut u8, value: u32) -> *mut u8 {
 // floor(log10(3/4 * 2**bin_exp)) otherwise, without branching.
 const fn compute_dec_exp(bin_exp: i32, regular: bool) -> i32 {
     debug_assert!(bin_exp >= -1334 && bin_exp <= 2620);
-    // log10_3_over_4_sig = round(log10(3/4) * 2**log10_2_exp)
-    const LOG10_3_OVER_4_SIG: i32 = -131_008;
+    // log10_3_over_4_sig = -log10(3/4) * 2**log10_2_exp rounded to a power of 2
+    const LOG10_3_OVER_4_SIG: i32 = 131_072;
     // log10_2_sig = round(log10(2) * 2**log10_2_exp)
     const LOG10_2_SIG: i32 = 315_653;
     const LOG10_2_EXP: i32 = 20;
-    (bin_exp * LOG10_2_SIG + !regular as i32 * LOG10_3_OVER_4_SIG) >> LOG10_2_EXP
+    (bin_exp * LOG10_2_SIG - !regular as i32 * LOG10_3_OVER_4_SIG) >> LOG10_2_EXP
 }
 
 // Computes a shift so that, after scaling by a power of 10, the intermediate
