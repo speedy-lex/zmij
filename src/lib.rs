@@ -1038,10 +1038,10 @@ const fn compute_dec_exp(bin_exp: i32, regular: bool) -> i32 {
 //   3 * 2**59 / 100 = 1.72...e+16  (needs shift = 1 + 1)
 //   3 * 2**60 / 100 = 3.45...e+16  (needs shift = 2 + 1)
 const fn compute_exp_shift(bin_exp: i32, dec_exp: i32) -> i32 {
+    debug_assert!(dec_exp >= -350 && dec_exp <= 350);
     // log2_pow10_sig = round(log2(10) * 2**log2_pow10_exp) + 1
     const LOG2_POW10_SIG: i32 = 217_707;
     const LOG2_POW10_EXP: i32 = 16;
-    debug_assert!(dec_exp >= -350 && dec_exp <= 350);
     // pow10_bin_exp = floor(log2(10**-dec_exp))
     let pow10_bin_exp = (-dec_exp * LOG2_POW10_SIG) >> LOG2_POW10_EXP;
     // pow10 = ((pow10_hi << 64) | pow10_lo) * 2**(pow10_bin_exp - 127)
