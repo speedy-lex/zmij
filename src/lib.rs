@@ -1327,9 +1327,9 @@ where
     // Write exponent.
     let sign_ptr = buffer;
     let e_sign = if dec_exp >= 0 {
-        ((b'+' as u16) << 8) | b'e' as u16
+        (u16::from(b'+') << 8) | u16::from(b'e')
     } else {
-        ((b'-' as u16) << 8) | b'e' as u16
+        (u16::from(b'-') << 8) | u16::from(b'e')
     };
     buffer = unsafe { buffer.add(1) };
     let mask = i32::from(dec_exp >= 0) - 1;
