@@ -1340,21 +1340,25 @@ where
     let mask = i32::from(dec_exp >= 0) - 1;
     dec_exp = (dec_exp + mask) ^ mask; // absolute value
     buffer = unsafe { buffer.add(usize::from(dec_exp >= 10)) };
-    if Float::MIN_10_EXP < -99 || Float::MAX_10_EXP > 99 {
-        // 19 is faster or equal to 12 even for 3 digits.
-        const DIV_EXP: u32 = 19;
-        const DIV_SIG: u32 = (1 << DIV_EXP) / 100 + 1;
-        let a = (dec_exp as u32 * DIV_SIG) >> DIV_EXP; // value / 100
+    if Float::MIN_10_EXP >= -99 && Float::MAX_10_EXP <= 99 {
         unsafe {
-            *buffer = b'0' + a as u8;
-            buffer = buffer.add(usize::from(dec_exp >= 100));
+            buffer
+                .cast::<u16>()
+                .write_unaligned(*digits2(dec_exp as usize));
+            sign_ptr.cast::<u16>().write_unaligned(e_sign.to_le());
+            return buffer.add(2);
         }
-        dec_exp -= (a * 100) as i32;
     }
+    // 19 is faster or equal to 12 even for 3 digits.
+    const DIV_EXP: u32 = 19;
+    const DIV_SIG: u32 = (1 << DIV_EXP) / 100 + 1;
+    let a = (dec_exp as u32 * DIV_SIG) >> DIV_EXP; // value / 100
     unsafe {
+        *buffer = b'0' + a as u8;
+        buffer = buffer.add(usize::from(dec_exp >= 100));
         buffer
             .cast::<u16>()
-            .write_unaligned(*digits2(dec_exp as usize));
+            .write_unaligned(*digits2((dec_exp as u32 - a * 100) as usize));
         sign_ptr.cast::<u16>().write_unaligned(e_sign.to_le());
         buffer.add(2)
     }
