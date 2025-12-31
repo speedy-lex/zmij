@@ -1008,9 +1008,9 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
                     int16x8_t,
                     uint8x16_t,
                 >(digits)));
-            let zeros: u64 = vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(is_zero, 4)), 0);
+            let zeros: u64 = !vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(is_zero, 4)), 0);
 
-            buffer.add(16 - ((!zeros).leading_zeros() as usize >> 2))
+            buffer.add(16 - (zeros.leading_zeros() as usize >> 2))
         }
     }
 }
