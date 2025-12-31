@@ -96,6 +96,10 @@ const fn umul128(x: u64, y: u64) -> u128 {
     x as u128 * y as u128
 }
 
+const fn umul128_upper64(x: u64, y: u64) -> u64 {
+    (umul128(x, y) >> 64) as u64
+}
+
 #[cfg_attr(feature = "no-panic", no_panic)]
 fn umul192_upper128(x_hi: u64, x_lo: u64, y: u64) -> uint128 {
     let p = umul128(x_hi, y);
@@ -104,10 +108,6 @@ fn umul192_upper128(x_hi: u64, x_lo: u64, y: u64) -> uint128 {
         hi: (p >> 64) as u64 + u64::from(lo < p as u64),
         lo,
     }
-}
-
-const fn umul128_upper64(x: u64, y: u64) -> u64 {
-    (umul128(x, y) >> 64) as u64
 }
 
 // Computes upper 64 bits of multiplication of x and y, discards the least
