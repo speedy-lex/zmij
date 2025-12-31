@@ -92,7 +92,6 @@ struct uint128 {
 }
 
 // Computes 128-bit result of multiplication of two 64-bit unsigned integers.
-#[cfg_attr(feature = "no-panic", no_panic)]
 const fn umul128(x: u64, y: u64) -> u128 {
     x as u128 * y as u128
 }
