@@ -323,29 +323,6 @@ const ZEROS: u64 = 0x0101010101010101 * b'0' as u64;
 // normals) and removes trailing zeros.
 #[cfg_attr(feature = "no-panic", no_panic)]
 unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
-    #[cfg(not(all(target_arch = "aarch64", target_feature = "neon", not(miri))))]
-    {
-        // Each digits is denoted by a letter so value is abbccddeeffgghhii where
-        // digit a can be zero.
-        let abbccddee = (value / 100_000_000) as u32;
-        let ffgghhii = (value % 100_000_000) as u32;
-        unsafe {
-            buffer = write_if_nonzero(buffer, abbccddee / 100_000_000);
-        }
-        let bcd = to_bcd8(u64::from(abbccddee % 100_000_000));
-        unsafe {
-            write8(buffer, bcd | ZEROS);
-        }
-        if ffgghhii == 0 {
-            return unsafe { buffer.add(count_trailing_nonzeros(bcd)) };
-        }
-        let bcd = to_bcd8(u64::from(ffgghhii));
-        unsafe {
-            write8(buffer.add(8), bcd | ZEROS);
-            buffer.add(8).add(count_trailing_nonzeros(bcd))
-        }
-    }
-
     #[cfg(all(target_arch = "aarch64", target_feature = "neon", not(miri)))]
     {
         use core::arch::aarch64::*;
@@ -465,6 +442,90 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
             let zeros: u64 = !vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(is_zero, 4)), 0);
 
             buffer.add(16 - (zeros.leading_zeros() as usize >> 2))
+        }
+    }
+
+    #[cfg(all(target_arch = "x86_64", target_feature = "sse4.1", not(miri)))]
+    {
+        use core::arch::x86_64::*;
+
+        let abbccddee = (value / 100_000_000) as u32;
+        let ffgghhii = (value % 100_000_000) as u32;
+        let a = abbccddee / 100_000_000;
+        let bbccddee = abbccddee % 100_000_000;
+
+        unsafe {
+            buffer = write_if_nonzero(buffer, a);
+            // This BCD sequence is by Xiang JunBo. It works the same as the one
+            // in to_bc8 but the masking can be avoided by using vector entries
+            // of the right size, and in the last step a shift operation is
+            // avoided by increasing the shift to 32 bits and then using
+            // ...mulhi... to avoid the shift.
+            let x: __m128i = _mm_set_epi64x(i64::from(ffgghhii), i64::from(bbccddee));
+            let y: __m128i = _mm_add_epi64(
+                x,
+                _mm_mul_epu32(
+                    _mm_set1_epi64x((1 << 32) - 10000),
+                    _mm_srli_epi64(_mm_mul_epu32(x, _mm_set1_epi64x(109951163)), 40),
+                ),
+            );
+            let z: __m128i = _mm_add_epi64(
+                y,
+                _mm_mullo_epi32(
+                    _mm_set1_epi32((1 << 16) - 100),
+                    _mm_srli_epi32(_mm_mulhi_epu16(y, _mm_set1_epi16(5243)), 3),
+                ),
+            );
+            let big_endian_bcd: __m128i = _mm_add_epi64(
+                z,
+                _mm_mullo_epi16(
+                    _mm_set1_epi16((1 << 8) - 10),
+                    _mm_mulhi_epu16(z, _mm_set1_epi16(6554)),
+                ),
+            );
+            let bcd: __m128i = _mm_shuffle_epi8(
+                big_endian_bcd,
+                _mm_set_epi8(8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7),
+            );
+
+            // convert to ascii
+            let ascii0: __m128i = _mm_set1_epi8(b'0' as i8);
+            let digits = _mm_add_epi8(bcd, ascii0);
+
+            // determine number of leading zeros
+            let mask: u16 = !_mm_movemask_epi8(_mm_cmpeq_epi8(bcd, _mm_setzero_si128())) as u16;
+            let len = 64 - u64::from(mask).leading_zeros();
+
+            // and save result
+            _mm_storeu_si128(buffer.cast::<__m128i>(), digits);
+
+            buffer.add(len as usize)
+        }
+    }
+
+    #[cfg(not(any(
+        all(target_arch = "aarch64", target_feature = "neon", not(miri)),
+        all(target_arch = "x86_64", target_feature = "sse4.1", not(miri)),
+    )))]
+    {
+        // Each digits is denoted by a letter so value is abbccddeeffgghhii where
+        // digit a can be zero.
+        let abbccddee = (value / 100_000_000) as u32;
+        let ffgghhii = (value % 100_000_000) as u32;
+        unsafe {
+            buffer = write_if_nonzero(buffer, abbccddee / 100_000_000);
+        }
+        let bcd = to_bcd8(u64::from(abbccddee % 100_000_000));
+        unsafe {
+            write8(buffer, bcd | ZEROS);
+        }
+        if ffgghhii == 0 {
+            return unsafe { buffer.add(count_trailing_nonzeros(bcd)) };
+        }
+        let bcd = to_bcd8(u64::from(ffgghhii));
+        unsafe {
+            write8(buffer.add(8), bcd | ZEROS);
+            buffer.add(8).add(count_trailing_nonzeros(bcd))
         }
     }
 }
