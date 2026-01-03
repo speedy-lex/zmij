@@ -45,6 +45,10 @@ jobs:
       - run: cargo check
         env:
           RUSTFLAGS: ${{env.RUSTFLAGS}} -Ctarget-cpu=native
+      - run: cargo build --tests --features no-panic --release
+        if: matrix.rust == 'nightly'
+        env:
+          RUSTFLAGS: ${{env.RUSTFLAGS}} -Ctarget-cpu=native
       - run: cargo test
         if: matrix.rust != '1.68.0'
         env:
