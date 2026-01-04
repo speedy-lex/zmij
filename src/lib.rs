@@ -666,9 +666,9 @@ where
         //
         // fractional = 2840565642863009226, fractional' = fractional / 2**64
         //
-        //     50507837461000000        c                          50507837461000010
-        //              s              l|   L                             S
-        // ───┬────┬────┼────┬────┬────┼*-──┼────┬────┬────┬────┬────┬────┼-*--┬───
+        //     50507837461000000        c               upper     50507837461000010
+        //              s              l|   L             |               S
+        // ───┬────┬────┼────┬────┬────┼*-──┼────┬────┬───*┬────┬────┬────┼-*--┬───
         //    8    9    0    1    2    3    4    5    6    7    8    9    0 |  1
         //            └─────────────────┼─────────────────┘                next
         //                             1ulp
@@ -680,10 +680,10 @@ where
         if {
             // Exact half-ulp tie when rounding to nearest integer.
             fractional != HALF_ULP &&
-            // Exact half-ulp tie when rounding to nearest 10.
+            // Boundary case when rounding down to nearest 10.
             scaled_sig_mod10 != scaled_half_ulp &&
-            // Near-boundary case for rounding to nearest 10.
-            ten.wrapping_sub(upper) > 1
+            // Near-boundary case for rounding up to nearest 10.
+            ten.wrapping_sub(upper) > 1 // upper != ten && upper != ten - 1
         } {
             let round_up = upper >= ten;
             let shorter = (integral.into() - digit + u64::from(round_up) * 10) as i64;
