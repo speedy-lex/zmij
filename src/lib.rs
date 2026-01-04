@@ -682,7 +682,7 @@ where
             fractional != HALF_ULP &&
             // Boundary case when rounding down to nearest 10.
             scaled_sig_mod10 != scaled_half_ulp &&
-            // Near-boundary case for rounding up to nearest 10.
+            // Near-boundary case when rounding up to nearest 10.
             // Case where upper != ten is insufficient: 1.342178e+08f.
             ten.wrapping_sub(upper) > 1 // upper != ten && upper != ten - 1
         } {
