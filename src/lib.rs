@@ -177,12 +177,14 @@ impl FloatTraits for f64 {
     }
 }
 
-struct Pow10SignificandsTable([(u64, u64); 617]);
+struct Pow10SignificandsTable {
+    data: [(u64, u64); 617],
+}
 
 impl Pow10SignificandsTable {
     unsafe fn get_unchecked(&self, dec_exp: i32) -> &(u64, u64) {
         const DEC_EXP_MIN: i32 = -292;
-        unsafe { self.0.get_unchecked((dec_exp - DEC_EXP_MIN) as usize) }
+        unsafe { self.data.get_unchecked((dec_exp - DEC_EXP_MIN) as usize) }
     }
 }
 
@@ -191,7 +193,7 @@ impl Index<i32> for Pow10SignificandsTable {
     type Output = (u64, u64);
     fn index(&self, dec_exp: i32) -> &Self::Output {
         const DEC_EXP_MIN: i32 = -292;
-        &self.0[(dec_exp - DEC_EXP_MIN) as usize]
+        &self.data[(dec_exp - DEC_EXP_MIN) as usize]
     }
 }
 
@@ -243,7 +245,7 @@ static POW10_SIGNIFICANDS: Pow10SignificandsTable = {
         i += 1;
     }
 
-    Pow10SignificandsTable(data)
+    Pow10SignificandsTable { data }
 };
 
 #[cfg_attr(feature = "no-panic", no_panic)]
