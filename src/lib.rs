@@ -66,11 +66,11 @@
 mod tests;
 mod traits;
 
+#[cfg(all(any(target_arch = "aarch64", target_arch = "x86_64"), not(miri)))]
+use core::arch::asm;
 #[cfg(not(zmij_no_select_unpredictable))]
 use core::hint;
 use core::mem::{self, MaybeUninit};
-#[cfg(test)]
-use core::ops::Index;
 use core::ptr;
 use core::slice;
 use core::str;
@@ -178,29 +178,51 @@ impl FloatTraits for f64 {
 }
 
 struct Pow10SignificandsTable {
-    data: [(u64, u64); 617],
+    data: [u64; Self::NUM_POW10 * 2],
 }
 
 impl Pow10SignificandsTable {
-    unsafe fn get_unchecked(&self, dec_exp: i32) -> &(u64, u64) {
-        const DEC_EXP_MIN: i32 = -292;
-        unsafe { self.data.get_unchecked((dec_exp - DEC_EXP_MIN) as usize) }
-    }
-}
+    const NUM_POW10: usize = 617;
+    const SPLIT_TABLES: bool = true;
 
-#[cfg(test)]
-impl Index<i32> for Pow10SignificandsTable {
-    type Output = (u64, u64);
-    fn index(&self, dec_exp: i32) -> &Self::Output {
+    unsafe fn get_unchecked(&self, dec_exp: i32) -> (u64, u64) {
         const DEC_EXP_MIN: i32 = -292;
-        &self.data[(dec_exp - DEC_EXP_MIN) as usize]
+        if !Self::SPLIT_TABLES {
+            let index = ((dec_exp - DEC_EXP_MIN) * 2) as usize;
+            return unsafe {
+                (
+                    *self.data.get_unchecked(index),
+                    *self.data.get_unchecked(index + 1),
+                )
+            };
+        }
+
+        unsafe {
+            let mut hi = self
+                .data
+                .as_ptr()
+                .offset(Self::NUM_POW10 as isize + DEC_EXP_MIN as isize - 1);
+            let mut lo = hi.add(Self::NUM_POW10);
+
+            // Force indexed loads.
+            #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), not(miri)))]
+            asm!("/*{0}{1}*/", inout(reg) hi, inout(reg) lo);
+            (*hi.offset(-dec_exp as isize), *lo.offset(-dec_exp as isize))
+        }
+    }
+
+    #[cfg(test)]
+    fn get(&self, dec_exp: i32) -> (u64, u64) {
+        const DEC_EXP_MIN: i32 = -292;
+        assert!((DEC_EXP_MIN..DEC_EXP_MIN + Self::NUM_POW10 as i32).contains(&dec_exp));
+        unsafe { self.get_unchecked(dec_exp) }
     }
 }
 
 // 128-bit significands of powers of 10 rounded down.
 // Generated using 192-bit arithmetic method by Dougall Johnson.
 static POW10_SIGNIFICANDS: Pow10SignificandsTable = {
-    let mut data = [(0, 0); 617];
+    let mut data = [0; Pow10SignificandsTable::NUM_POW10 * 2];
 
     struct uint192 {
         w0: u64, // least significant
@@ -217,8 +239,14 @@ static POW10_SIGNIFICANDS: Pow10SignificandsTable = {
     };
     let ten = 0xa000000000000000;
     let mut i = 0;
-    while i < data.len() {
-        data[i] = (current.w2, current.w1);
+    while i < Pow10SignificandsTable::NUM_POW10 {
+        if Pow10SignificandsTable::SPLIT_TABLES {
+            data[Pow10SignificandsTable::NUM_POW10 - i - 1] = current.w2;
+            data[Pow10SignificandsTable::NUM_POW10 * 2 - i - 1] = current.w1;
+        } else {
+            data[i * 2] = current.w2;
+            data[i * 2 + 1] = current.w1;
+        }
 
         let h0: u64 = umul128_upper64(current.w0, ten);
         let h1: u64 = umul128_upper64(current.w1, ten);
@@ -328,7 +356,6 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
     #[cfg(all(target_arch = "aarch64", target_feature = "neon", not(miri)))]
     {
         use core::arch::aarch64::*;
-        use core::arch::asm;
 
         // An optimized version for NEON by Dougall Johnson.
         struct ToStringConstants {
@@ -586,7 +613,7 @@ where
     let num_bits = mem::size_of::<UInt>() as i32 * 8;
     if regular && !subnormal {
         let exp_shift = compute_exp_shift(bin_exp, dec_exp);
-        let (pow10_hi, pow10_lo) = *unsafe { POW10_SIGNIFICANDS.get_unchecked(-dec_exp) };
+        let (pow10_hi, pow10_lo) = unsafe { POW10_SIGNIFICANDS.get_unchecked(-dec_exp) };
 
         let integral; // integral part of bin_sig * pow10
         let fractional; // fractional part of bin_sig * pow10
@@ -601,7 +628,6 @@ where
         }
         #[cfg(all(any(target_arch = "aarch64", target_arch = "x86_64"), not(miri)))]
         let digit = {
-            use core::arch::asm;
             // An optimization of integral % 10 by Dougall Johnson. Relies on
             // range calculation: (max_bin_sig << max_exp_shift) * max_u128.
             let div10 = ((u128::from(integral.into()) * ((1 << 64) / 10 + 1)) >> 64) as u64;
@@ -676,7 +702,7 @@ where
 
     dec_exp = compute_dec_exp(bin_exp, regular);
     let exp_shift = compute_exp_shift(bin_exp, dec_exp);
-    let (mut pow10_hi, mut pow10_lo) = *unsafe { POW10_SIGNIFICANDS.get_unchecked(-dec_exp) };
+    let (mut pow10_hi, mut pow10_lo) = unsafe { POW10_SIGNIFICANDS.get_unchecked(-dec_exp) };
 
     // Fallback to Schubfach to guarantee correctness in boundary cases. This
     // requires switching to strict overestimates of powers of 10.
