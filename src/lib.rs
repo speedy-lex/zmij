@@ -368,9 +368,9 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
         let a = (umul128(abbccddee, c.mul_const) >> 90) as u64;
         abbccddee -= a * hundred_million;
 
-        unsafe {
-            buffer = write_if_nonzero(buffer, a as u32);
+        buffer = unsafe { write_if_nonzero(buffer, a as u32) };
 
+        unsafe {
             let hundredmillions64: uint64x1_t =
                 mem::transmute::<u64, uint64x1_t>(abbccddee | (ffgghhii << 32));
             let hundredmillions32: int32x2_t = vreinterpret_s32_u64(hundredmillions64);
@@ -421,8 +421,8 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
         let a = abbccddee / 100_000_000;
         let bbccddee = abbccddee % 100_000_000;
 
+        buffer = unsafe { write_if_nonzero(buffer, a) };
         unsafe {
-            buffer = write_if_nonzero(buffer, a);
             // This BCD sequence is by Xiang JunBo. It works the same as the one
             // in to_bc8 but the masking can be avoided by using vector entries
             // of the right size, and in the last step a shift operation is
@@ -479,9 +479,7 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
         // digit a can be zero.
         let abbccddee = (value / 100_000_000) as u32;
         let ffgghhii = (value % 100_000_000) as u32;
-        unsafe {
-            buffer = write_if_nonzero(buffer, abbccddee / 100_000_000);
-        }
+        buffer = unsafe { write_if_nonzero(buffer, abbccddee / 100_000_000) };
         let bcd = to_bcd8(u64::from(abbccddee % 100_000_000));
         unsafe {
             write8(buffer, bcd | ZEROS);
@@ -501,9 +499,7 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
 // and removes trailing zeros.
 #[cfg_attr(feature = "no-panic", no_panic)]
 unsafe fn write_significand9(mut buffer: *mut u8, value: u32) -> *mut u8 {
-    unsafe {
-        buffer = write_if_nonzero(buffer, value / 100_000_000);
-    }
+    buffer = unsafe { write_if_nonzero(buffer, value / 100_000_000) };
     let bcd = to_bcd8(u64::from(value % 100_000_000));
     unsafe {
         write8(buffer, bcd | ZEROS);
@@ -754,8 +750,8 @@ where
 
     unsafe {
         *buffer = b'-';
-        buffer = buffer.add(usize::from(Float::is_negative(bits)));
     }
+    buffer = unsafe { buffer.add(usize::from(Float::is_negative(bits))) };
 
     let mut bin_sig = Float::get_sig(bits); // binary significand
     let mut regular = bin_sig != Float::SigType::from(0);
@@ -828,8 +824,8 @@ where
         // 1234e30 -> 1.234e33
         *buffer = *buffer.add(1);
         *buffer.add(1) = b'.';
-        buffer = buffer.add(length + usize::from(length > 1));
     }
+    buffer = unsafe { buffer.add(length + usize::from(length > 1)) };
 
     // Write exponent.
     let sign_ptr = buffer;
@@ -857,7 +853,9 @@ where
     let digit = (dec_exp as u32 * DIV_SIG) >> DIV_EXP; // value / 100
     unsafe {
         *buffer = b'0' + digit as u8;
-        buffer = buffer.add(usize::from(dec_exp >= 100));
+    }
+    buffer = unsafe { buffer.add(usize::from(dec_exp >= 100)) };
+    unsafe {
         buffer
             .cast::<u16>()
             .write_unaligned(*digits2((dec_exp as u32 - digit * 100) as usize));
