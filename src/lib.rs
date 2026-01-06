@@ -91,6 +91,7 @@ struct dec_fp {
     exp: i32, // exponent
 }
 
+#[cfg_attr(test, derive(Debug, PartialEq))]
 struct uint128 {
     hi: u64,
     lo: u64,
@@ -124,11 +125,11 @@ where
 {
     let num_bits = mem::size_of::<UInt>() * 8;
     if num_bits == 64 {
-        let uint128 { hi, lo } = umul192_upper128(x_hi, x_lo, y.into());
-        UInt::truncate(hi | u64::from((lo >> 1) != 0))
+        let p = umul192_upper128(x_hi, x_lo, y.into());
+        UInt::truncate(p.hi | u64::from((p.lo >> 1) != 0))
     } else {
-        let result = (umul128(x_hi, y.into()) >> 32) as u64;
-        UInt::enlarge((result >> 32) as u32 | u32::from((result as u32 >> 1) != 0))
+        let p = (umul128(x_hi, y.into()) >> 32) as u64;
+        UInt::enlarge((p >> 32) as u32 | u32::from((p as u32 >> 1) != 0))
     }
 }
 
@@ -187,15 +188,13 @@ impl Pow10SignificandsTable {
     const NUM_POW10: usize = 617;
     const SPLIT_TABLES: bool = true;
 
-    unsafe fn get_unchecked(&self, dec_exp: i32) -> (u64, u64) {
+    unsafe fn get_unchecked(&self, dec_exp: i32) -> uint128 {
         const DEC_EXP_MIN: i32 = -292;
         if !Self::SPLIT_TABLES {
             let index = ((dec_exp - DEC_EXP_MIN) * 2) as usize;
-            return unsafe {
-                (
-                    *self.data.get_unchecked(index),
-                    *self.data.get_unchecked(index + 1),
-                )
+            return uint128 {
+                hi: unsafe { *self.data.get_unchecked(index) },
+                lo: unsafe { *self.data.get_unchecked(index + 1) },
             };
         }
 
@@ -217,12 +216,15 @@ impl Pow10SignificandsTable {
             // Force indexed loads.
             #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), not(miri)))]
             asm!("/*{0}{1}*/", inout(reg) hi, inout(reg) lo);
-            (*hi.offset(-dec_exp as isize), *lo.offset(-dec_exp as isize))
+            uint128 {
+                hi: *hi.offset(-dec_exp as isize),
+                lo: *lo.offset(-dec_exp as isize),
+            }
         }
     }
 
     #[cfg(test)]
-    fn get(&self, dec_exp: i32) -> (u64, u64) {
+    fn get(&self, dec_exp: i32) -> uint128 {
         const DEC_EXP_MIN: i32 = -292;
         assert!((DEC_EXP_MIN..DEC_EXP_MIN + Self::NUM_POW10 as i32).contains(&dec_exp));
         unsafe { self.get_unchecked(dec_exp) }
@@ -624,18 +626,18 @@ where
     // An optimization from yy by Yaoyuan Guo:
     while regular && !subnormal {
         let exp_shift = compute_exp_shift(bin_exp, dec_exp);
-        let (pow10_hi, pow10_lo) = unsafe { POW10_SIGNIFICANDS.get_unchecked(-dec_exp) };
+        let pow10 = unsafe { POW10_SIGNIFICANDS.get_unchecked(-dec_exp) };
 
         let integral; // integral part of bin_sig * pow10
         let fractional; // fractional part of bin_sig * pow10
         if num_bits == 64 {
-            let result = umul192_upper128(pow10_hi, pow10_lo, (bin_sig << exp_shift).into());
-            integral = UInt::truncate(result.hi);
-            fractional = result.lo;
+            let p = umul192_upper128(pow10.hi, pow10.lo, (bin_sig << exp_shift).into());
+            integral = UInt::truncate(p.hi);
+            fractional = p.lo;
         } else {
-            let result = umul128(pow10_hi, (bin_sig << exp_shift).into());
-            integral = UInt::truncate((result >> 64) as u64);
-            fractional = result as u64;
+            let p = umul128(pow10.hi, (bin_sig << exp_shift).into());
+            integral = UInt::truncate((p >> 64) as u64);
+            fractional = p as u64;
         }
         const HALF_ULP: u64 = 1 << 63;
 
@@ -671,7 +673,7 @@ where
         // dec_exp is chosen so that 10**dec_exp <= 2**bin_exp < 10**(dec_exp + 1).
         // Since 1ulp == 2**bin_exp it will be in the range [1, 10) after scaling
         // by 10**dec_exp. Add 1 to combine the shift with division by two.
-        let scaled_half_ulp = pow10_hi >> (num_integral_bits - exp_shift + 1);
+        let scaled_half_ulp = pow10.hi >> (num_integral_bits - exp_shift + 1);
         let upper = scaled_sig_mod10 + scaled_half_ulp;
 
         // value = 5.0507837461e-27
@@ -717,14 +719,14 @@ where
 
     dec_exp = compute_dec_exp(bin_exp, regular);
     let exp_shift = compute_exp_shift(bin_exp, dec_exp);
-    let (mut pow10_hi, mut pow10_lo) = unsafe { POW10_SIGNIFICANDS.get_unchecked(-dec_exp) };
+    let mut pow10 = unsafe { POW10_SIGNIFICANDS.get_unchecked(-dec_exp) };
 
     // Fallback to Schubfach to guarantee correctness in boundary cases. This
     // requires switching to strict overestimates of powers of 10.
     if num_bits == 64 {
-        pow10_lo += 1;
+        pow10.lo += 1;
     } else {
-        pow10_hi += 1;
+        pow10.hi += 1;
     }
 
     // Shift the significand so that boundaries are integer.
@@ -735,9 +737,9 @@ where
     // by multiplying them by the power of 10 and applying modified rounding.
     let lsb = bin_sig & UInt::from(1);
     let lower = (bin_sig_shifted - (UInt::from(regular) + UInt::from(1))) << exp_shift;
-    let lower = umul_upper_inexact_to_odd(pow10_hi, pow10_lo, lower) + lsb;
+    let lower = umul_upper_inexact_to_odd(pow10.hi, pow10.lo, lower) + lsb;
     let upper = (bin_sig_shifted + UInt::from(2)) << exp_shift;
-    let upper = umul_upper_inexact_to_odd(pow10_hi, pow10_lo, upper) - lsb;
+    let upper = umul_upper_inexact_to_odd(pow10.hi, pow10.lo, upper) - lsb;
 
     // The idea of using a single shorter candidate is by Cassio Neri.
     // It is less or equal to the upper bound by construction.
@@ -752,7 +754,7 @@ where
         );
     }
 
-    let scaled_sig = umul_upper_inexact_to_odd(pow10_hi, pow10_lo, bin_sig_shifted << exp_shift);
+    let scaled_sig = umul_upper_inexact_to_odd(pow10.hi, pow10.lo, bin_sig_shifted << exp_shift);
     let longer_below = scaled_sig >> BOUND_SHIFT;
     let longer_above = longer_below + UInt::from(1);
 
