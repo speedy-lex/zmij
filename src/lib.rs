@@ -55,6 +55,7 @@
     clippy::items_after_statements,
     clippy::must_use_candidate,
     clippy::needless_doctest_main,
+    clippy::never_loop,
     clippy::redundant_else,
     clippy::similar_names,
     clippy::too_many_lines,
