@@ -60,6 +60,7 @@
     clippy::similar_names,
     clippy::too_many_lines,
     clippy::unreadable_literal,
+    clippy::while_immutable_condition,
     clippy::wildcard_imports
 )]
 
