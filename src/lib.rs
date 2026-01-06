@@ -619,7 +619,8 @@ where
     UInt: traits::UInt,
 {
     let num_bits = mem::size_of::<UInt>() as i32 * 8;
-    if regular && !subnormal {
+    // An optimization from yy by Yaoyuan Guo:
+    while regular && !subnormal {
         let exp_shift = compute_exp_shift(bin_exp, dec_exp);
         let (pow10_hi, pow10_lo) = unsafe { POW10_SIGNIFICANDS.get_unchecked(-dec_exp) };
 
@@ -634,6 +635,13 @@ where
             integral = UInt::truncate((result >> 64) as u64);
             fractional = result as u64;
         }
+        const HALF_ULP: u64 = 1 << 63;
+
+        // Exact half-ulp tie when rounding to nearest integer.
+        if fractional == HALF_ULP {
+            break;
+        }
+
         #[cfg(all(any(target_arch = "aarch64", target_arch = "x86_64"), not(miri)))]
         let digit = {
             // An optimization of integral % 10 by Dougall Johnson. Relies on
@@ -663,7 +671,6 @@ where
         // by 10**dec_exp. Add 1 to combine the shift with division by two.
         let scaled_half_ulp = pow10_hi >> (num_integral_bits - exp_shift + 1);
         let upper = scaled_sig_mod10 + scaled_half_ulp;
-        const HALF_ULP: u64 = 1 << 63;
 
         // value = 5.0507837461e-27
         // next  = 5.0507837461000010e-27
@@ -684,10 +691,7 @@ where
         // s - shorter underestimate, S - shorter overestimate
         // l - longer underestimate,  L - longer overestimate
 
-        // An optimization from yy by Yaoyuan Guo:
         if {
-            // Exact half-ulp tie when rounding to nearest integer.
-            fractional != HALF_ULP &&
             // Boundary case when rounding down to nearest 10.
             scaled_sig_mod10 != scaled_half_ulp &&
             // Near-boundary case when rounding up to nearest 10.
@@ -706,6 +710,7 @@ where
                 exp: dec_exp,
             };
         }
+        break;
     }
 
     dec_exp = compute_dec_exp(bin_exp, regular);
