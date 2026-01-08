@@ -288,6 +288,93 @@ static POW10_SIGNIFICANDS: Pow10SignificandsTable = {
     Pow10SignificandsTable { data }
 };
 
+// Computes the decimal exponent as floor(log10(2**bin_exp)) if regular or
+// floor(log10(3/4 * 2**bin_exp)) otherwise, without branching.
+const fn compute_dec_exp(bin_exp: i32, regular: bool) -> i32 {
+    debug_assert!(bin_exp >= -1334 && bin_exp <= 2620);
+    // log10_3_over_4_sig = -log10(3/4) * 2**log10_2_exp rounded to a power of 2
+    const LOG10_3_OVER_4_SIG: i32 = 131_072;
+    // log10_2_sig = round(log10(2) * 2**log10_2_exp)
+    const LOG10_2_SIG: i32 = 315_653;
+    const LOG10_2_EXP: i32 = 20;
+    (bin_exp * LOG10_2_SIG - !regular as i32 * LOG10_3_OVER_4_SIG) >> LOG10_2_EXP
+}
+
+const fn do_compute_exp_shift(bin_exp: i32, dec_exp: i32) -> i32 {
+    debug_assert!(dec_exp >= -350 && dec_exp <= 350);
+    // log2_pow10_sig = round(log2(10) * 2**log2_pow10_exp) + 1
+    const LOG2_POW10_SIG: i32 = 217_707;
+    const LOG2_POW10_EXP: i32 = 16;
+    // pow10_bin_exp = floor(log2(10**-dec_exp))
+    let pow10_bin_exp = (-dec_exp * LOG2_POW10_SIG) >> LOG2_POW10_EXP;
+    // pow10 = ((pow10_hi << 64) | pow10_lo) * 2**(pow10_bin_exp - 127)
+    bin_exp + pow10_bin_exp + 1
+}
+
+struct ExpShiftTable {
+    data: [u8; if Self::ENABLE {
+        Self::NUM_EXPS as usize
+    } else {
+        1
+    }],
+}
+
+impl ExpShiftTable {
+    const ENABLE: bool = true;
+    const NUM_EXPS: i32 = f64::EXP_MASK + 1;
+    const OFFSET: i32 = f64::NUM_SIG_BITS + f64::EXP_BIAS;
+}
+
+static EXP_SHIFTS: ExpShiftTable = {
+    let mut data = [0u8; if ExpShiftTable::ENABLE {
+        ExpShiftTable::NUM_EXPS as usize
+    } else {
+        1
+    }];
+
+    if ExpShiftTable::ENABLE {
+        let mut raw_exp = 0;
+        while raw_exp < ExpShiftTable::NUM_EXPS {
+            let mut bin_exp = raw_exp - ExpShiftTable::OFFSET;
+            if raw_exp == 0 {
+                bin_exp += 1;
+            }
+            let dec_exp = compute_dec_exp(bin_exp, true);
+            data[raw_exp as usize] = do_compute_exp_shift(bin_exp, dec_exp) as u8;
+            raw_exp += 1;
+        }
+    }
+
+    ExpShiftTable { data }
+};
+
+// Computes a shift so that, after scaling by a power of 10, the intermediate
+// result always has a fixed 128-bit fractional part (for double).
+//
+// Different binary exponents can map to the same decimal exponent, but place
+// the decimal point at different bit positions. The shift compensates for this.
+//
+// For example, both 3 * 2**59 and 3 * 2**60 have dec_exp = 2, but dividing by
+// 10^dec_exp puts the decimal point in different bit positions:
+//   3 * 2**59 / 100 = 1.72...e+16  (needs shift = 1 + 1)
+//   3 * 2**60 / 100 = 3.45...e+16  (needs shift = 2 + 1)
+const unsafe fn compute_exp_shift<UInt>(bin_exp: i32, dec_exp: i32, regular: bool) -> i32
+where
+    UInt: traits::UInt,
+{
+    let num_bits = mem::size_of::<UInt>() * 8;
+    if num_bits == 64 && ExpShiftTable::ENABLE && regular {
+        (unsafe {
+            *EXP_SHIFTS
+                .data
+                .as_ptr()
+                .add((bin_exp + ExpShiftTable::OFFSET) as usize)
+        }) as i32
+    } else {
+        do_compute_exp_shift(bin_exp, dec_exp)
+    }
+}
+
 #[cfg_attr(feature = "no-panic", no_panic)]
 fn count_trailing_nonzeros(x: u64) -> usize {
     // We count the number of bytes until there are only zeros left.
@@ -548,46 +635,6 @@ unsafe fn write_significand9(mut buffer: *mut u8, value: u32) -> *mut u8 {
     }
 }
 
-// Computes the decimal exponent as floor(log10(2**bin_exp)) if regular or
-// floor(log10(3/4 * 2**bin_exp)) otherwise, without branching.
-const fn compute_dec_exp(bin_exp: i32, regular: bool) -> i32 {
-    debug_assert!(bin_exp >= -1334 && bin_exp <= 2620);
-    // log10_3_over_4_sig = -log10(3/4) * 2**log10_2_exp rounded to a power of 2
-    const LOG10_3_OVER_4_SIG: i32 = 131_072;
-    // log10_2_sig = round(log10(2) * 2**log10_2_exp)
-    const LOG10_2_SIG: i32 = 315_653;
-    const LOG10_2_EXP: i32 = 20;
-    (bin_exp * LOG10_2_SIG - !regular as i32 * LOG10_3_OVER_4_SIG) >> LOG10_2_EXP
-}
-
-// Computes a shift so that, after scaling by a power of 10, the intermediate
-// result always has a fixed 128-bit fractional part (for double).
-//
-// Different binary exponents can map to the same decimal exponent, but place
-// the decimal point at different bit positions. The shift compensates for this.
-//
-// For example, both 3 * 2**59 and 3 * 2**60 have dec_exp = 2, but dividing by
-// 10^dec_exp puts the decimal point in different bit positions:
-//   3 * 2**59 / 100 = 1.72...e+16  (needs shift = 1 + 1)
-//   3 * 2**60 / 100 = 3.45...e+16  (needs shift = 2 + 1)
-const fn compute_exp_shift(bin_exp: i32, dec_exp: i32) -> i32 {
-    debug_assert!(dec_exp >= -350 && dec_exp <= 350);
-    // log2_pow10_sig = round(log2(10) * 2**log2_pow10_exp) + 1
-    const LOG2_POW10_SIG: i32 = 217_707;
-    const LOG2_POW10_EXP: i32 = 16;
-    // pow10_bin_exp = floor(log2(10**-dec_exp))
-    let pow10_bin_exp = (-dec_exp * LOG2_POW10_SIG) >> LOG2_POW10_EXP;
-    // pow10 = ((pow10_hi << 64) | pow10_lo) * 2**(pow10_bin_exp - 127)
-
-    // Shift to ensure the intermediate result of multiplying by a power of 10
-    // has a fixed 128-bit fractional part. For example, 3 * 2**59 and 3 * 2**60
-    // both have dec_exp = 2 and dividing them by 10**dec_exp would have the
-    // decimal point in different (bit) positions without the shift:
-    //   3 * 2**59 / 100 = 1.72...e+16 (exp_shift = 1 + 1)
-    //   3 * 2**60 / 100 = 3.45...e+16 (exp_shift = 2 + 1)
-    bin_exp + pow10_bin_exp + 1
-}
-
 fn normalize<UInt>(mut dec: dec_fp, subnormal: bool) -> dec_fp
 where
     UInt: traits::UInt,
@@ -612,7 +659,13 @@ where
 // Converts a binary FP number bin_sig * 2**bin_exp to the shortest decimal
 // representation.
 #[cfg_attr(feature = "no-panic", no_panic)]
-fn to_decimal<UInt>(bin_sig: UInt, bin_exp: i32, regular: bool, subnormal: bool) -> dec_fp
+fn to_decimal<UInt>(
+    bin_sig: UInt,
+    bin_exp: i32,
+    #[allow(unused_variables)] raw_exp: i32,
+    regular: bool,
+    subnormal: bool,
+) -> dec_fp
 where
     UInt: traits::UInt,
 {
@@ -620,7 +673,7 @@ where
     // An optimization from yy by Yaoyuan Guo:
     while regular && !subnormal {
         let dec_exp = compute_dec_exp(bin_exp, true);
-        let exp_shift = compute_exp_shift(bin_exp, dec_exp);
+        let exp_shift = unsafe { compute_exp_shift::<UInt>(bin_exp, dec_exp, true) };
         let pow10 = unsafe { POW10_SIGNIFICANDS.get_unchecked(-dec_exp) };
 
         let integral; // integral part of bin_sig * pow10
@@ -713,7 +766,7 @@ where
     }
 
     let dec_exp = compute_dec_exp(bin_exp, regular);
-    let exp_shift = compute_exp_shift(bin_exp, dec_exp);
+    let exp_shift = unsafe { compute_exp_shift::<UInt>(bin_exp, dec_exp, regular) };
     let mut pow10 = unsafe { POW10_SIGNIFICANDS.get_unchecked(-dec_exp) };
 
     // Fallback to Schubfach to guarantee correctness in boundary cases. This
@@ -784,7 +837,7 @@ where
 {
     let bits = value.to_bits();
     // It is beneficial to compute exponent early.
-    let mut bin_exp = Float::get_exp(bits); // binary exponent
+    let raw_exp = Float::get_exp(bits);
 
     unsafe {
         *buffer = b'-';
@@ -792,6 +845,7 @@ where
     buffer = unsafe { buffer.add(usize::from(Float::is_negative(bits))) };
 
     let mut bin_sig = Float::get_sig(bits); // binary significand
+    let mut bin_exp = raw_exp; // binary exponent
     let special = bin_exp == 0;
     let regular = (bin_sig != Float::SigType::from(0)) | special; // | special slightly improves perf.
     if special {
@@ -810,7 +864,7 @@ where
     bin_exp -= Float::NUM_SIG_BITS + Float::EXP_BIAS;
 
     // Here be 🐉s.
-    let mut dec = to_decimal(bin_sig, bin_exp, regular, special);
+    let mut dec = to_decimal(bin_sig, bin_exp, raw_exp, regular, special);
     let mut dec_exp = dec.exp;
 
     // Write significand.
