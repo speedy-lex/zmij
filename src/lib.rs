@@ -783,8 +783,8 @@ where
     Float: FloatTraits,
 {
     let bits = value.to_bits();
-    let raw_exp = Float::get_exp(bits); // binary exponent
-    let mut bin_exp = raw_exp - Float::NUM_SIG_BITS - Float::EXP_BIAS;
+    // It is beneficial to compute exponent early.
+    let mut bin_exp = Float::get_exp(bits); // binary exponent
 
     unsafe {
         *buffer = b'-';
@@ -793,7 +793,7 @@ where
 
     let mut bin_sig = Float::get_sig(bits); // binary significand
     let mut regular = bin_sig != Float::SigType::from(0);
-    let special = raw_exp == 0;
+    let special = bin_exp == 0;
     if special {
         if bin_sig == Float::SigType::from(0) {
             return unsafe {
@@ -803,12 +803,13 @@ where
                 buffer.add(3)
             };
         }
-        bin_exp = 1 - Float::NUM_SIG_BITS - Float::EXP_BIAS;
+        bin_exp = 1;
         bin_sig |= Float::IMPLICIT_BIT;
         // Setting regular is not redundant: it has a measurable perf impact.
         regular = true;
     }
     bin_sig ^= Float::IMPLICIT_BIT;
+    bin_exp -= Float::NUM_SIG_BITS + Float::EXP_BIAS;
 
     // Here be 🐉s.
     let mut dec = to_decimal(bin_sig, bin_exp, regular, special);
