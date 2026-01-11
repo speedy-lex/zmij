@@ -58,6 +58,7 @@
     clippy::never_loop,
     clippy::redundant_else,
     clippy::similar_names,
+    clippy::too_many_arguments,
     clippy::too_many_lines,
     clippy::unreadable_literal,
     clippy::while_immutable_condition,
