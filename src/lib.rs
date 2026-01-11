@@ -421,17 +421,26 @@ unsafe fn digits2(value: usize) -> &'static u16 {
     }
 }
 
+const DIV10K_EXP: i32 = 40;
+const DIV10K_SIG: u32 = ((1u64 << DIV10K_EXP) / 10000 + 1) as u32;
+const DIV100_EXP: i32 = 19;
+const DIV100_SIG: u32 = (1 << DIV100_EXP) / 100 + 1;
+
+const ZEROS: u64 = 0x0101010101010101 * b'0' as u64;
+
 #[cfg_attr(feature = "no-panic", no_panic)]
 fn to_bcd8(abcdefgh: u64) -> u64 {
     // An optimization from Xiang JunBo.
     // Three steps BCD. Base 10000 -> base 100 -> base 10.
     // div and mod are evaluated simultaneously as, e.g.
     //   (abcdefgh / 10000) << 32 + (abcdefgh % 10000)
-    //      == abcdefgh + (2^32 - 10000) * (abcdefgh / 10000)))
+    //      == abcdefgh + (2**32 - 10000) * (abcdefgh / 10000)))
     // where the division on the RHS is implemented by the usual multiply + shift
     // trick and the fractional bits are masked away.
-    let abcd_efgh = abcdefgh + (0x100000000 - 10000) * ((abcdefgh * 0x68db8bb) >> 40);
-    let ab_cd_ef_gh = abcd_efgh + (0x10000 - 100) * (((abcd_efgh * 0x147b) >> 19) & 0x7f0000007f);
+    let abcd_efgh =
+        abcdefgh + (0x100000000 - 10000) * ((abcdefgh * u64::from(DIV10K_SIG)) >> DIV10K_EXP);
+    let ab_cd_ef_gh = abcd_efgh
+        + (0x10000 - 100) * (((abcd_efgh * u64::from(DIV100_SIG)) >> DIV100_EXP) & 0x7f0000007f);
     let a_b_c_d_e_f_g_h =
         ab_cd_ef_gh + (0x100 - 10) * (((ab_cd_ef_gh * 0x67) >> 10) & 0xf000f000f000f);
     a_b_c_d_e_f_g_h.to_be()
@@ -449,8 +458,6 @@ unsafe fn write8(buffer: *mut u8, value: u64) {
         buffer.cast::<u64>().write_unaligned(value);
     }
 }
-
-const ZEROS: u64 = 0x0101010101010101 * b'0' as u64;
 
 // Writes a significand consisting of up to 17 decimal digits (16-17 for
 // normals) and removes trailing zeros.
@@ -471,7 +478,12 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
         static CONSTANTS: ToStringConstants = ToStringConstants {
             mul_const: 0xabcc77118461cefd,
             hundred_million: 100000000,
-            multipliers32: [0x68db8bb, -10000 + 0x10000, 0x147b000, -100 + 0x10000],
+            multipliers32: [
+                DIV10K_SIG as i32,
+                -10000 + 0x10000,
+                (DIV100_SIG << 12) as i32,
+                -100 + 0x10000,
+            ],
             multipliers16: [0xce0, -10 + 0x100, 0, 0, 0, 0, 0, 0],
         };
 
@@ -557,8 +569,8 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
 
         #[repr(C, align(64))]
         struct C {
-            div10000: __m128i,
-            divmod10000: __m128i,
+            div10k: __m128i,
+            divmod10k: __m128i,
             div100: __m128i,
             divmod100: __m128i,
             div10: __m128i,
@@ -574,9 +586,9 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
         }
 
         static C: C = C {
-            div10000: _mm_set1_epi64x((1 << 40) / 10000 + 1),
-            divmod10000: _mm_set1_epi64x((1 << 32) - 10000),
-            div100: _mm_set1_epi32((1 << 19) / 100 + 1),
+            div10k: _mm_set1_epi64x(DIV10K_SIG as i64),
+            divmod10k: _mm_set1_epi64x((1 << 32) - 10000),
+            div100: _mm_set1_epi32(DIV100_SIG as i32),
             divmod100: _mm_set1_epi32((1 << 16) - 100),
             div10: _mm_set1_epi16(((1i32 << 16) / 10 + 1) as i16),
             #[cfg(target_feature = "sse4.1")]
@@ -596,8 +608,8 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
             let y: __m128i = _mm_add_epi64(
                 x,
                 _mm_mul_epu32(
-                    C.divmod10000,
-                    _mm_srli_epi64(_mm_mul_epu32(x, C.div10000), 40),
+                    C.divmod10k,
+                    _mm_srli_epi64(_mm_mul_epu32(x, C.div10k), DIV10K_EXP),
                 ),
             );
 
@@ -973,9 +985,7 @@ where
         }
     }
     // 19 is faster or equal to 12 even for 3 digits.
-    const DIV_EXP: u32 = 19;
-    const DIV_SIG: u32 = (1 << DIV_EXP) / 100 + 1;
-    let digit = (dec_exp as u32 * DIV_SIG) >> DIV_EXP; // value / 100
+    let digit = (dec_exp as u32 * DIV100_SIG) >> DIV100_EXP; // value / 100
     unsafe {
         *buffer = b'0' + digit as u8;
     }
