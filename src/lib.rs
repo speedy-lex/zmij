@@ -185,8 +185,8 @@ struct Pow10SignificandsTable {
 }
 
 impl Pow10SignificandsTable {
+    const SPLIT_TABLES: bool = cfg!(target_arch = "aarch64");
     const NUM_POW10: usize = 617;
-    const SPLIT_TABLES: bool = true;
 
     unsafe fn get_unchecked(&self, dec_exp: i32) -> uint128 {
         const DEC_EXP_MIN: i32 = -292;
