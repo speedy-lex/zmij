@@ -659,16 +659,12 @@ where
 // Converts a binary FP number bin_sig * 2**bin_exp to the shortest decimal
 // representation.
 #[cfg_attr(feature = "no-panic", no_panic)]
-fn to_decimal<UInt>(
-    bin_sig: UInt,
-    bin_exp: i32,
-    #[allow(unused_variables)] raw_exp: i32,
-    regular: bool,
-    subnormal: bool,
-) -> dec_fp
+fn to_decimal<Float, UInt>(bin_sig: UInt, raw_exp: i32, regular: bool, subnormal: bool) -> dec_fp
 where
+    Float: FloatTraits,
     UInt: traits::UInt,
 {
+    let mut bin_exp = raw_exp - Float::NUM_SIG_BITS - Float::EXP_BIAS;
     let num_bits = mem::size_of::<UInt>() as i32 * 8;
     // An optimization from yy by Yaoyuan Guo:
     while regular && !subnormal {
@@ -764,6 +760,7 @@ where
         }
         break;
     }
+    bin_exp += i32::from(subnormal);
 
     let dec_exp = compute_dec_exp(bin_exp, regular);
     let exp_shift = unsafe { compute_exp_shift::<UInt, false>(bin_exp, dec_exp) };
@@ -837,7 +834,7 @@ where
 {
     let bits = value.to_bits();
     // It is beneficial to compute exponent early.
-    let raw_exp = Float::get_exp(bits);
+    let bin_exp = Float::get_exp(bits); // binary exponent
 
     unsafe {
         *buffer = b'-';
@@ -845,7 +842,6 @@ where
     buffer = unsafe { buffer.add(usize::from(Float::is_negative(bits))) };
 
     let mut bin_sig = Float::get_sig(bits); // binary significand
-    let mut bin_exp = raw_exp; // binary exponent
     let special = bin_exp == 0;
     let regular = (bin_sig != Float::SigType::from(0)) | special; // | special slightly improves perf.
     if special {
@@ -858,13 +854,11 @@ where
             };
         }
         bin_sig |= Float::IMPLICIT_BIT;
-        bin_exp = 1;
     }
     bin_sig ^= Float::IMPLICIT_BIT;
-    bin_exp -= Float::NUM_SIG_BITS + Float::EXP_BIAS;
 
     // Here be 🐉s.
-    let mut dec = to_decimal(bin_sig, bin_exp, raw_exp, regular, special);
+    let mut dec = to_decimal::<Float, Float::SigType>(bin_sig, bin_exp, regular, special);
     let mut dec_exp = dec.exp;
 
     // Write significand.
