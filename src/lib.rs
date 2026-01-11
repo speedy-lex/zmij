@@ -1013,8 +1013,14 @@ where
             return buffer.add(2);
         }
     }
-    // 19 is faster or equal to 12 even for 3 digits.
-    let digit = (dec_exp as u32 * DIV100_SIG) >> DIV100_EXP; // value / 100
+
+    let digit = if cfg!(all(target_vendor = "apple", target_arch = "aarch64")) {
+        // Use mulhi to divide by 100.
+        ((dec_exp as u128 * 0x290000000000000) >> 64) as u32
+    } else {
+        // div100_exp=19 is faster or equal to 12 even for 3 digits.
+        (dec_exp as u32 * DIV100_SIG) >> DIV100_EXP // value / 100
+    };
     unsafe {
         *buffer = b'0' + digit as u8;
     }
