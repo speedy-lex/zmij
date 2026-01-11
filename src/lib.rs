@@ -471,9 +471,12 @@ unsafe fn write8(buffer: *mut u8, value: u64) {
 unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
     #[cfg(all(target_arch = "aarch64", target_feature = "neon", not(miri)))]
     {
+        // An optimized version for NEON by Dougall Johnson.
+
         use core::arch::aarch64::*;
 
-        // An optimized version for NEON by Dougall Johnson.
+        const NEG10K: i32 = -10000 + 0x10000;
+
         struct ToStringConstants {
             mul_const: u64,
             hundred_million: u64,
@@ -486,11 +489,11 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
             hundred_million: 100000000,
             multipliers32: [
                 DIV10K_SIG as i32,
-                -10000 + 0x10000,
+                NEG10K,
                 (DIV100_SIG << 12) as i32,
-                -100 + 0x10000,
+                NEG100 as i32,
             ],
-            multipliers16: [0xce0, -10 + 0x100, 0, 0, 0, 0, 0, 0],
+            multipliers16: [0xce0, NEG10 as i16, 0, 0, 0, 0, 0, 0],
         };
 
         let mut c = ptr::addr_of!(CONSTANTS);
@@ -521,38 +524,42 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
         buffer = unsafe { write_if_nonzero(buffer, a as u32) };
 
         unsafe {
-            let ffgghhii_bbccddee64: uint64x1_t =
+            let ffgghhii_bbccddee_64: uint64x1_t =
                 mem::transmute::<u64, uint64x1_t>((ffgghhii << 32) | bbccddee);
-            let ffgghhii_bbccddee: int32x2_t = vreinterpret_s32_u64(ffgghhii_bbccddee64);
+            let bbccddee_ffgghhii: int32x2_t = vreinterpret_s32_u64(ffgghhii_bbccddee_64);
 
-            let quo10k: int32x2_t = vreinterpret_s32_u32(vshr_n_u32(
-                vreinterpret_u32_s32(vqdmulh_n_s32(ffgghhii_bbccddee, c.multipliers32[0])),
+            let bbcc_ffgg: int32x2_t = vreinterpret_s32_u32(vshr_n_u32(
+                vreinterpret_u32_s32(vqdmulh_n_s32(bbccddee_ffgghhii, c.multipliers32[0])),
                 9,
             ));
-            let rem10k: int32x2_t = vmla_n_s32(ffgghhii_bbccddee, quo10k, c.multipliers32[1]);
+            let ddee_bbcc_hhii_ffgg_32: int32x2_t =
+                vmla_n_s32(bbccddee_ffgghhii, bbcc_ffgg, c.multipliers32[1]);
 
-            let mut extended: int32x4_t =
-                vreinterpretq_s32_u32(vshll_n_u16(vreinterpret_u16_s32(rem10k), 0));
+            let mut ddee_bbcc_hhii_ffgg: int32x4_t =
+                vreinterpretq_s32_u32(vshll_n_u16(vreinterpret_u16_s32(ddee_bbcc_hhii_ffgg_32), 0));
 
             // Compiler barrier, or clang breaks the subsequent MLA into UADDW +
             // MUL.
-            asm!("/*{:v}*/", inout(vreg) extended);
+            asm!("/*{:v}*/", inout(vreg) ddee_bbcc_hhii_ffgg);
 
-            let high_100: int32x4_t = vqdmulhq_n_s32(extended, c.multipliers32[2]);
-            let hundreds: int16x8_t =
-                vreinterpretq_s16_s32(vmlaq_n_s32(extended, high_100, c.multipliers32[3]));
-            let high_10: int16x8_t = vqdmulhq_n_s16(hundreds, c.multipliers16[0]);
+            let dd_bb_hh_ff: int32x4_t = vqdmulhq_n_s32(ddee_bbcc_hhii_ffgg, c.multipliers32[2]);
+            let ee_dd_cc_bb_ii_hh_gg_ff: int16x8_t = vreinterpretq_s16_s32(vmlaq_n_s32(
+                ddee_bbcc_hhii_ffgg,
+                dd_bb_hh_ff,
+                c.multipliers32[3],
+            ));
+            let high_10s: int16x8_t = vqdmulhq_n_s16(ee_dd_cc_bb_ii_hh_gg_ff, c.multipliers16[0]);
             let digits: uint8x16_t = vrev64q_u8(vreinterpretq_u8_s16(vmlaq_n_s16(
-                hundreds,
-                high_10,
+                ee_dd_cc_bb_ii_hh_gg_ff,
+                high_10s,
                 c.multipliers16[1],
             )));
-            let ascii: uint16x8_t = vaddq_u16(
+            let str: uint16x8_t = vaddq_u16(
                 vreinterpretq_u16_u8(digits),
                 vreinterpretq_u16_s8(vdupq_n_s8(b'0' as i8)),
             );
 
-            buffer.cast::<uint16x8_t>().write_unaligned(ascii);
+            buffer.cast::<uint16x8_t>().write_unaligned(str);
 
             let is_zero: uint16x8_t = vreinterpretq_u16_u8(vceqq_u8(digits, vdupq_n_u8(0)));
             let zeros: u64 = !vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(is_zero, 4)), 0);
