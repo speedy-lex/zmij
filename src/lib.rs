@@ -427,6 +427,9 @@ const NEG10K: u32 = ((1u64 << 32) - 10000) as u32;
 const DIV100_EXP: i32 = 19;
 const DIV100_SIG: u32 = (1 << DIV100_EXP) / 100 + 1;
 const NEG100: u32 = (1 << 16) - 100;
+const DIV10_EXP: i32 = 10;
+const DIV10_SIG: u32 = (1 << DIV10_EXP) / 10 + 1;
+const NEG10: u32 = (1 << 8) - 10;
 
 const ZEROS: u64 = 0x0101010101010101 * b'0' as u64;
 
@@ -443,8 +446,9 @@ fn to_bcd8(abcdefgh: u64) -> u64 {
         abcdefgh + u64::from(NEG10K) * ((abcdefgh * u64::from(DIV10K_SIG)) >> DIV10K_EXP);
     let ab_cd_ef_gh = abcd_efgh
         + u64::from(NEG100) * (((abcd_efgh * u64::from(DIV100_SIG)) >> DIV100_EXP) & 0x7f0000007f);
-    let a_b_c_d_e_f_g_h =
-        ab_cd_ef_gh + (0x100 - 10) * (((ab_cd_ef_gh * 0x67) >> 10) & 0xf000f000f000f);
+    let a_b_c_d_e_f_g_h = ab_cd_ef_gh
+        + u64::from(NEG10)
+            * (((ab_cd_ef_gh * u64::from(DIV10_SIG)) >> DIV10_EXP) & 0xf000f000f000f);
     a_b_c_d_e_f_g_h.to_be()
 }
 
@@ -506,30 +510,29 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64) -> *mut u8 {
         }
 
         // Equivalent to abbccddee = value / 100000000, ffgghhii = value % 100000000.
-        let mut abbccddee = (umul128(value, c.mul_const) >> 90) as u64;
+        let abbccddee = (umul128(value, c.mul_const) >> 90) as u64;
         let ffgghhii = value - abbccddee * hundred_million;
 
         // We could probably make this bit faster, but we're preferring to
         // reuse the constants for now.
         let a = (umul128(abbccddee, c.mul_const) >> 90) as u64;
-        abbccddee -= a * hundred_million;
+        let bbccddee = abbccddee - a * hundred_million;
 
         buffer = unsafe { write_if_nonzero(buffer, a as u32) };
 
         unsafe {
-            let hundredmillions64: uint64x1_t =
-                mem::transmute::<u64, uint64x1_t>(abbccddee | (ffgghhii << 32));
-            let hundredmillions32: int32x2_t = vreinterpret_s32_u64(hundredmillions64);
+            let ffgghhii_bbccddee64: uint64x1_t =
+                mem::transmute::<u64, uint64x1_t>((ffgghhii << 32) | bbccddee);
+            let ffgghhii_bbccddee: int32x2_t = vreinterpret_s32_u64(ffgghhii_bbccddee64);
 
-            let high_10000: int32x2_t = vreinterpret_s32_u32(vshr_n_u32(
-                vreinterpret_u32_s32(vqdmulh_n_s32(hundredmillions32, c.multipliers32[0])),
+            let quo10k: int32x2_t = vreinterpret_s32_u32(vshr_n_u32(
+                vreinterpret_u32_s32(vqdmulh_n_s32(ffgghhii_bbccddee, c.multipliers32[0])),
                 9,
             ));
-            let tenthousands: int32x2_t =
-                vmla_n_s32(hundredmillions32, high_10000, c.multipliers32[1]);
+            let rem10k: int32x2_t = vmla_n_s32(ffgghhii_bbccddee, quo10k, c.multipliers32[1]);
 
             let mut extended: int32x4_t =
-                vreinterpretq_s32_u32(vshll_n_u16(vreinterpret_u16_s32(tenthousands), 0));
+                vreinterpretq_s32_u32(vshll_n_u16(vreinterpret_u16_s32(rem10k), 0));
 
             // Compiler barrier, or clang breaks the subsequent MLA into UADDW +
             // MUL.
