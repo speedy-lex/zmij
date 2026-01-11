@@ -921,8 +921,7 @@ where
         (u16::from(b'-') << 8) | u16::from(b'e')
     };
     buffer = unsafe { buffer.add(1) };
-    let mask = i32::from(dec_exp >= 0) - 1;
-    dec_exp = (dec_exp + mask) ^ mask; // absolute value
+    dec_exp = if dec_exp >= 0 { dec_exp } else { -dec_exp };
     buffer = unsafe { buffer.add(usize::from(dec_exp >= 10)) };
     if Float::MIN_10_EXP >= -99 && Float::MAX_10_EXP <= 99 {
         unsafe {
