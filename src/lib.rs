@@ -358,12 +358,12 @@ static EXP_SHIFTS: ExpShiftTable = {
 // 10^dec_exp puts the decimal point in different bit positions:
 //   3 * 2**59 / 100 = 1.72...e+16  (needs shift = 1 + 1)
 //   3 * 2**60 / 100 = 3.45...e+16  (needs shift = 2 + 1)
-unsafe fn compute_exp_shift<UInt>(bin_exp: i32, dec_exp: i32, regular: bool) -> u8
+unsafe fn compute_exp_shift<UInt, const ONLY_REGULAR: bool>(bin_exp: i32, dec_exp: i32) -> u8
 where
     UInt: traits::UInt,
 {
     let num_bits = mem::size_of::<UInt>() * 8;
-    if num_bits == 64 && ExpShiftTable::ENABLE && regular {
+    if num_bits == 64 && ExpShiftTable::ENABLE && ONLY_REGULAR {
         unsafe {
             *EXP_SHIFTS
                 .data
@@ -673,7 +673,7 @@ where
     // An optimization from yy by Yaoyuan Guo:
     while regular && !subnormal {
         let dec_exp = compute_dec_exp(bin_exp, true);
-        let exp_shift = unsafe { compute_exp_shift::<UInt>(bin_exp, dec_exp, true) };
+        let exp_shift = unsafe { compute_exp_shift::<UInt, true>(bin_exp, dec_exp) };
         let pow10 = unsafe { POW10_SIGNIFICANDS.get_unchecked(-dec_exp) };
 
         let integral; // integral part of bin_sig * pow10
@@ -766,7 +766,7 @@ where
     }
 
     let dec_exp = compute_dec_exp(bin_exp, regular);
-    let exp_shift = unsafe { compute_exp_shift::<UInt>(bin_exp, dec_exp, regular) };
+    let exp_shift = unsafe { compute_exp_shift::<UInt, false>(bin_exp, dec_exp) };
     let mut pow10 = unsafe { POW10_SIGNIFICANDS.get_unchecked(-dec_exp) };
 
     // Fallback to Schubfach to guarantee correctness in boundary cases. This
