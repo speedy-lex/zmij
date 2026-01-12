@@ -1014,7 +1014,7 @@ where
         }
     }
 
-    let digit = if cfg!(all(target_vendor = "apple", target_arch = "aarch64")) {
+    let digit = if cfg!(target_vendor = "apple") {
         // Use mulhi to divide by 100.
         ((dec_exp as u128 * 0x290000000000000) >> 64) as u32
     } else {
