@@ -625,8 +625,9 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64, has17digits: bool
             div10k: __m128i,
             neg10k: __m128i,
             div100: __m128i,
-            neg100: __m128i,
             div10: __m128i,
+            #[cfg(target_feature = "sse4.1")]
+            neg100: __m128i,
             #[cfg(target_feature = "sse4.1")]
             neg10: __m128i,
             #[cfg(target_feature = "sse4.1")]
@@ -642,8 +643,9 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64, has17digits: bool
             div10k: _mm_set1_epi64x(DIV10K_SIG as i64),
             neg10k: _mm_set1_epi64x(NEG10K as i64),
             div100: _mm_set1_epi32(DIV100_SIG as i32),
-            neg100: _mm_set1_epi32(NEG100 as i32),
             div10: _mm_set1_epi16(((1i32 << 16) / 10 + 1) as i16),
+            #[cfg(target_feature = "sse4.1")]
+            neg100: _mm_set1_epi32(NEG100 as i32),
             #[cfg(target_feature = "sse4.1")]
             neg10: _mm_set1_epi16((1 << 8) - 10),
             #[cfg(target_feature = "sse4.1")]
