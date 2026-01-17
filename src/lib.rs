@@ -398,7 +398,7 @@ fn count_trailing_nonzeros(x: u64) -> usize {
     // bit is unused we can avoid the zero check by shifting the datum left by
     // one and inserting a sentinel bit at the end. This can be faster than the
     // automatically inserted range check.
-    (70 - ((x.to_le() << 1) | 1).leading_zeros()) as usize / 8
+    (70 - ((x.to_le() << 1) | 1).leading_zeros() as usize) / 8
 }
 
 // Align data since unaligned access may be slower when crossing a
@@ -699,10 +699,10 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64, has17digits: bool
             // non-zero digit is the last digit which we factored off. But in
             // that case the number would be printed with a different exponent
             // that shifts the last digit into the first position.
-            let len = 32 - u32::from(mask).leading_zeros();
+            let len = 32 - u32::from(mask).leading_zeros() as usize;
 
             _mm_storeu_si128(buffer.cast::<__m128i>(), digits);
-            buffer.add(if last_digit != 0 { 17 } else { len as usize })
+            buffer.add(if last_digit != 0 { 17 } else { len })
         }
     }
 
