@@ -480,14 +480,14 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64, has17digits: bool
 
         const NEG10K: i32 = -10000 + 0x10000;
 
-        struct ToStringConstants {
+        struct MulConstants {
             mul_const: u64,
             hundred_million: u64,
             multipliers32: int32x4_t,
             multipliers16: int16x8_t,
         }
 
-        static CONSTANTS: ToStringConstants = ToStringConstants {
+        static CONSTANTS: MulConstants = MulConstants {
             mul_const: 0xabcc77118461cefd,
             hundred_million: 100000000,
             multipliers32: unsafe {
@@ -780,10 +780,11 @@ where
         let digit = {
             // An optimization of integral % 10 by Dougall Johnson. Relies on
             // range calculation: (max_bin_sig << max_exp_shift) * max_u128.
-            let quo10 = ((u128::from(integral.into()) * ((1 << 64) / 10 + 1)) >> 64) as u64;
-            let mut digit = integral.into() - quo10 * 10;
+            let div10_sig = (1 << 63) / 5 + 1;
+            let mut digit = integral.into() - umul128_hi64(integral.into(), div10_sig) * 10;
+            // or it narrows to 32-bit and doesn't use madd/msub
             unsafe {
-                asm!("/*{0}*/", inout(reg) digit); // or it narrows to 32-bit and doesn't use madd/msub
+                asm!("/*{0}*/", inout(reg) digit);
             }
             digit
         };
