@@ -504,50 +504,6 @@ const fn pack8(a: u8, b: u8, c: u8, d: u8, e: u8, f: u8, g: u8, h: u8) -> u64 {
         | a as u64
 }
 
-#[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-#[repr(C, align(64))]
-struct Consts {
-    div10k: __m128i,
-    neg10k: __m128i,
-    div100: __m128i,
-    div10: __m128i,
-    #[cfg(target_feature = "sse4.1")]
-    neg100: __m128i,
-    #[cfg(target_feature = "sse4.1")]
-    neg10: __m128i,
-    #[cfg(target_feature = "sse4.1")]
-    bswap: __m128i,
-    #[cfg(not(target_feature = "sse4.1"))]
-    hundred: __m128i,
-    #[cfg(not(target_feature = "sse4.1"))]
-    moddiv10: __m128i,
-    zeros: __m128i,
-}
-
-#[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-static CONSTS: Consts = Consts {
-    div10k: splat64(DIV10K_SIG as u64),
-    neg10k: splat64(NEG10K as u64),
-    div100: splat32(DIV100_SIG),
-    div10: splat16(((1u32 << 16) / 10 + 1) as u16),
-    #[cfg(target_feature = "sse4.1")]
-    neg100: splat32(NEG100),
-    #[cfg(target_feature = "sse4.1")]
-    neg10: splat16((1 << 8) - 10),
-    #[cfg(target_feature = "sse4.1")]
-    bswap: unsafe {
-        mem::transmute::<[u64; 2], __m128i>([
-            pack8(15, 14, 13, 12, 11, 10, 9, 8),
-            pack8(7, 6, 5, 4, 3, 2, 1, 0),
-        ])
-    },
-    #[cfg(not(target_feature = "sse4.1"))]
-    hundred: splat32(100),
-    #[cfg(not(target_feature = "sse4.1"))]
-    moddiv10: splat16(10 * (1 << 8) - 1),
-    zeros: splat64(ZEROS),
-};
-
 // Writes a significand consisting of up to 17 decimal digits (16-17 for
 // normals) and removes trailing zeros. The significant digits start from
 // buffer[1]. buffer[0] may contain '0' after this function if the significand
@@ -693,6 +649,48 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64, has17digits: bool
 
         let abcdefgh = (digits_16 / 100_000_000) as u32;
         let ijklmnop = (digits_16 % 100_000_000) as u32;
+
+        #[repr(C, align(64))]
+        struct Consts {
+            div10k: __m128i,
+            neg10k: __m128i,
+            div100: __m128i,
+            div10: __m128i,
+            #[cfg(target_feature = "sse4.1")]
+            neg100: __m128i,
+            #[cfg(target_feature = "sse4.1")]
+            neg10: __m128i,
+            #[cfg(target_feature = "sse4.1")]
+            bswap: __m128i,
+            #[cfg(not(target_feature = "sse4.1"))]
+            hundred: __m128i,
+            #[cfg(not(target_feature = "sse4.1"))]
+            moddiv10: __m128i,
+            zeros: __m128i,
+        }
+
+        static CONSTS: Consts = Consts {
+            div10k: splat64(DIV10K_SIG as u64),
+            neg10k: splat64(NEG10K as u64),
+            div100: splat32(DIV100_SIG),
+            div10: splat16(((1u32 << 16) / 10 + 1) as u16),
+            #[cfg(target_feature = "sse4.1")]
+            neg100: splat32(NEG100),
+            #[cfg(target_feature = "sse4.1")]
+            neg10: splat16((1 << 8) - 10),
+            #[cfg(target_feature = "sse4.1")]
+            bswap: unsafe {
+                mem::transmute::<[u64; 2], __m128i>([
+                    pack8(15, 14, 13, 12, 11, 10, 9, 8),
+                    pack8(7, 6, 5, 4, 3, 2, 1, 0),
+                ])
+            },
+            #[cfg(not(target_feature = "sse4.1"))]
+            hundred: splat32(100),
+            #[cfg(not(target_feature = "sse4.1"))]
+            moddiv10: splat16(10 * (1 << 8) - 1),
+            zeros: splat64(ZEROS),
+        };
 
         let div10k = unsafe { _mm_load_si128(&CONSTS.div10k) };
         let neg10k = unsafe { _mm_load_si128(&CONSTS.neg10k) };
