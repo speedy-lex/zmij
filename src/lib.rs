@@ -747,13 +747,13 @@ unsafe fn write_significand17(mut buffer: *mut u8, value: u64, has17digits: bool
 
             // determine number of leading zeros
             let mask128: __m128i = _mm_cmpgt_epi8(bcd, _mm_setzero_si128());
-            let mask = _mm_movemask_epi8(mask128) as u16;
+            let mask = _mm_movemask_epi8(mask128) as u32;
             // We don't need a zero-check here: if the mask were zero, either
             // the significand is zero which is handled elsewhere or the only
             // non-zero digit is the last digit which we factored off. But in
             // that case the number would be printed with a different exponent
             // that shifts the last digit into the first position.
-            let len = 32 - u32::from(mask).leading_zeros() as usize;
+            let len = 32 - mask.leading_zeros() as usize;
 
             _mm_storeu_si128(buffer.cast::<__m128i>(), digits);
             buffer.add(if last_digit != 0 { 17 } else { len })
