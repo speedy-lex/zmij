@@ -77,8 +77,6 @@ mod traits;
 
 #[cfg(all(any(target_arch = "aarch64", target_arch = "x86_64"), not(miri)))]
 use core::arch::asm;
-#[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-use core::arch::x86_64::__m128i;
 #[cfg(not(zmij_no_select_unpredictable))]
 use core::hint;
 use core::mem::{self, MaybeUninit};
@@ -320,7 +318,7 @@ const fn do_compute_exp_shift(bin_exp: i32, dec_exp: i32) -> u8 {
 
 struct ExpShiftTable {
     data: [u8; if Self::ENABLE {
-        Self::NUM_EXPS as usize
+        f64::EXP_MASK as usize + 1
     } else {
         1
     }],
@@ -328,27 +326,24 @@ struct ExpShiftTable {
 
 impl ExpShiftTable {
     const ENABLE: bool = true;
-    const NUM_EXPS: i32 = f64::EXP_MASK + 1;
 }
 
 static EXP_SHIFTS: ExpShiftTable = {
     let mut data = [0u8; if ExpShiftTable::ENABLE {
-        ExpShiftTable::NUM_EXPS as usize
+        f64::EXP_MASK as usize + 1
     } else {
         1
     }];
 
-    if ExpShiftTable::ENABLE {
-        let mut raw_exp = 0;
-        while raw_exp < ExpShiftTable::NUM_EXPS {
-            let mut bin_exp = raw_exp - f64::EXP_OFFSET;
-            if raw_exp == 0 {
-                bin_exp += 1;
-            }
-            let dec_exp = compute_dec_exp(bin_exp, true);
-            data[raw_exp as usize] = do_compute_exp_shift(bin_exp, dec_exp) as u8;
-            raw_exp += 1;
+    let mut raw_exp = 0;
+    while raw_exp < data.len() && ExpShiftTable::ENABLE {
+        let mut bin_exp = raw_exp as i32 - f64::EXP_OFFSET;
+        if raw_exp == 0 {
+            bin_exp += 1;
         }
+        let dec_exp = compute_dec_exp(bin_exp, true);
+        data[raw_exp] = do_compute_exp_shift(bin_exp, dec_exp) as u8;
+        raw_exp += 1;
     }
 
     ExpShiftTable { data }
@@ -468,17 +463,17 @@ unsafe fn write8(buffer: *mut u8, value: u64) {
 }
 
 #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-const fn splat64(x: u64) -> __m128i {
-    unsafe { mem::transmute::<[u64; 2], __m128i>([x, x]) }
+const fn splat64(x: u64) -> u128 {
+    ((x as u128) << 64) | x as u128
 }
 
 #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-const fn splat32(x: u32) -> __m128i {
+const fn splat32(x: u32) -> u128 {
     splat64(((x as u64) << 32) | x as u64)
 }
 
 #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-const fn splat16(x: u16) -> __m128i {
+const fn splat16(x: u16) -> u128 {
     splat32(((x as u32) << 16) | x as u32)
 }
 
@@ -666,21 +661,21 @@ unsafe fn write_significand17(
 
         #[repr(C, align(64))]
         struct Consts {
-            div10k: __m128i,
-            neg10k: __m128i,
-            div100: __m128i,
-            div10: __m128i,
+            div10k: u128,
+            neg10k: u128,
+            div100: u128,
+            div10: u128,
             #[cfg(target_feature = "sse4.1")]
-            neg100: __m128i,
+            neg100: u128,
             #[cfg(target_feature = "sse4.1")]
-            neg10: __m128i,
+            neg10: u128,
             #[cfg(target_feature = "sse4.1")]
-            bswap: __m128i,
+            bswap: u128,
             #[cfg(not(target_feature = "sse4.1"))]
-            hundred: __m128i,
+            hundred: u128,
             #[cfg(not(target_feature = "sse4.1"))]
-            moddiv10: __m128i,
-            zeros: __m128i,
+            moddiv10: u128,
+            zeros: u128,
         }
 
         static CONSTS: Consts = Consts {
@@ -693,12 +688,8 @@ unsafe fn write_significand17(
             #[cfg(target_feature = "sse4.1")]
             neg10: splat16((1 << 8) - 10),
             #[cfg(target_feature = "sse4.1")]
-            bswap: unsafe {
-                mem::transmute::<[u64; 2], __m128i>([
-                    pack8(15, 14, 13, 12, 11, 10, 9, 8),
-                    pack8(7, 6, 5, 4, 3, 2, 1, 0),
-                ])
-            },
+            bswap: pack8(15, 14, 13, 12, 11, 10, 9, 8) as u128
+                | (pack8(7, 6, 5, 4, 3, 2, 1, 0) as u128) << 64,
             #[cfg(not(target_feature = "sse4.1"))]
             hundred: splat32(100),
             #[cfg(not(target_feature = "sse4.1"))]
@@ -706,21 +697,21 @@ unsafe fn write_significand17(
             zeros: splat64(ZEROS),
         };
 
-        let div10k = unsafe { _mm_load_si128(&CONSTS.div10k) };
-        let neg10k = unsafe { _mm_load_si128(&CONSTS.neg10k) };
-        let div100 = unsafe { _mm_load_si128(&CONSTS.div100) };
-        let div10 = unsafe { _mm_load_si128(&CONSTS.div10) };
+        let div10k = unsafe { _mm_load_si128(ptr::addr_of!(CONSTS.div10k).cast::<__m128i>()) };
+        let neg10k = unsafe { _mm_load_si128(ptr::addr_of!(CONSTS.neg10k).cast::<__m128i>()) };
+        let div100 = unsafe { _mm_load_si128(ptr::addr_of!(CONSTS.div100).cast::<__m128i>()) };
+        let div10 = unsafe { _mm_load_si128(ptr::addr_of!(CONSTS.div10).cast::<__m128i>()) };
         #[cfg(target_feature = "sse4.1")]
-        let neg100 = unsafe { _mm_load_si128(&CONSTS.neg100) };
+        let neg100 = unsafe { _mm_load_si128(ptr::addr_of!(CONSTS.neg100).cast::<__m128i>()) };
         #[cfg(target_feature = "sse4.1")]
-        let neg10 = unsafe { _mm_load_si128(&CONSTS.neg10) };
+        let neg10 = unsafe { _mm_load_si128(ptr::addr_of!(CONSTS.neg10).cast::<__m128i>()) };
         #[cfg(target_feature = "sse4.1")]
-        let bswap = unsafe { _mm_load_si128(&CONSTS.bswap) };
+        let bswap = unsafe { _mm_load_si128(ptr::addr_of!(CONSTS.bswap).cast::<__m128i>()) };
         #[cfg(not(target_feature = "sse4.1"))]
-        let hundred = unsafe { _mm_load_si128(&CONSTS.hundred) };
+        let hundred = unsafe { _mm_load_si128(ptr::addr_of!(CONSTS.hundred).cast::<__m128i>()) };
         #[cfg(not(target_feature = "sse4.1"))]
-        let moddiv10 = unsafe { _mm_load_si128(&CONSTS.moddiv10) };
-        let zeros = unsafe { _mm_load_si128(&CONSTS.zeros) };
+        let moddiv10 = unsafe { _mm_load_si128(ptr::addr_of!(CONSTS.moddiv10).cast::<__m128i>()) };
+        let zeros = unsafe { _mm_load_si128(ptr::addr_of!(CONSTS.zeros).cast::<__m128i>()) };
 
         // The BCD sequences are based on ones provided by Xiang JunBo.
         unsafe {
@@ -1126,7 +1117,7 @@ where
     buffer = unsafe { buffer.add(1) };
     dec_exp = if dec_exp >= 0 { dec_exp } else { -dec_exp };
     buffer = unsafe { buffer.add(usize::from(dec_exp >= 10)) };
-    if Float::MIN_10_EXP >= -99 && Float::MAX_10_EXP <= 99 {
+    if Float::MIN_10_EXP > -100 && Float::MAX_10_EXP < 100 {
         unsafe {
             buffer
                 .cast::<u16>()
