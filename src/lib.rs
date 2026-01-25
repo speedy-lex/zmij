@@ -862,7 +862,7 @@ where
 // Converts a binary FP number bin_sig * 2**bin_exp to the shortest decimal
 // representation, where bin_exp = raw_exp - exp_offset.
 #[cfg_attr(feature = "no-panic", no_panic)]
-fn to_decimal_normal<Float, UInt>(bin_sig: UInt, raw_exp: i64, regular: bool) -> ToDecimalResult
+fn to_decimal_fast<Float, UInt>(bin_sig: UInt, raw_exp: i64, regular: bool) -> ToDecimalResult
 where
     Float: FloatTraits,
     UInt: traits::UInt,
@@ -1000,6 +1000,11 @@ where
     buffer = unsafe { buffer.add(usize::from(Float::is_negative(bits))) };
 
     let mut dec;
+    let threshold = if Float::NUM_BITS == 64 {
+        10_000_000_000_000_000
+    } else {
+        100_000_000
+    };
     if bin_exp == 0 {
         if bin_sig == Float::SigType::from(0) {
             return unsafe {
@@ -1010,13 +1015,7 @@ where
             };
         }
         dec = to_decimal_schubfach(bin_sig, i64::from(1 - Float::EXP_OFFSET), true);
-        while dec.sig
-            < if Float::NUM_BITS == 64 {
-                10_000_000_000_000_000
-            } else {
-                100_000_000
-            }
-        {
+        while dec.sig < threshold {
             dec.sig *= 10;
             dec.exp -= 1;
         }
@@ -1025,19 +1024,14 @@ where
             dec.sig_div10 = dec.sig / 10;
         }
     } else {
-        dec = to_decimal_normal::<Float, Float::SigType>(
+        dec = to_decimal_fast::<Float, Float::SigType>(
             bin_sig | Float::IMPLICIT_BIT,
             bin_exp,
             bin_sig != Float::SigType::from(0),
         );
     }
     let mut dec_exp = dec.exp;
-    let extra_digit = dec.sig
-        >= if Float::NUM_BITS == 64 {
-            10_000_000_000_000_000
-        } else {
-            100_000_000
-        };
+    let extra_digit = dec.sig >= threshold;
     dec_exp += Float::MAX_DIGITS10 as i32 - 2 + i32::from(extra_digit);
     if Float::NUM_BITS == 32 && dec.sig < 10_000_000 {
         dec.sig *= 10;
