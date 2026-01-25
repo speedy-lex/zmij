@@ -784,37 +784,8 @@ struct ToDecimalResult {
     sig_div10: i64,
 }
 
-fn normalize<UInt>(mut dec: ToDecimalResult, subnormal: bool) -> ToDecimalResult
-where
-    UInt: traits::UInt,
-{
-    if !subnormal {
-        return dec;
-    }
-    let num_bits = mem::size_of::<UInt>() * 8;
-    while dec.sig
-        < if num_bits == 64 {
-            10_000_000_000_000_000
-        } else {
-            100_000_000
-        }
-    {
-        dec.sig *= 10;
-        dec.exp -= 1;
-    }
-    #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-    {
-        dec.sig_div10 = dec.sig / 10;
-    }
-    dec
-}
-
 #[cfg_attr(feature = "no-panic", no_panic)]
-fn to_decimal_schubfach<const SUBNORMAL: bool, UInt>(
-    bin_sig: UInt,
-    bin_exp: i64,
-    regular: bool,
-) -> ToDecimalResult
+fn to_decimal_schubfach<UInt>(bin_sig: UInt, bin_exp: i64, regular: bool) -> ToDecimalResult
 where
     UInt: traits::UInt,
 {
@@ -854,7 +825,7 @@ where
             #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
             sig_div10: div10.into() as i64,
         };
-        return normalize::<UInt>(result, SUBNORMAL);
+        return result;
     }
 
     let scaled_sig = umulhi_inexact_to_odd(pow10.hi, pow10.lo, bin_sig_shifted << exp_shift);
@@ -874,13 +845,12 @@ where
     } else {
         longer_above
     };
-    let result = ToDecimalResult {
+    ToDecimalResult {
         sig: dec_sig.into() as i64,
         exp: dec_exp,
         #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
         sig_div10: (dec_sig / UInt::from(10)).into() as i64,
-    };
-    normalize::<UInt>(result, SUBNORMAL)
+    }
 }
 
 // Here be 🐉s.
@@ -1004,7 +974,7 @@ where
             sig_div10: div10 as i64 + i64::from(use_shorter) * i64::from(round_up),
         };
     }
-    to_decimal_schubfach::<false, UInt>(bin_sig, bin_exp, regular)
+    to_decimal_schubfach(bin_sig, bin_exp, regular)
 }
 
 /// Writes the shortest correctly rounded decimal representation of `value` to
@@ -1024,7 +994,8 @@ where
     }
     buffer = unsafe { buffer.add(usize::from(Float::is_negative(bits))) };
 
-    let mut dec = if bin_exp == 0 {
+    let mut dec;
+    if bin_exp == 0 {
         if bin_sig == Float::SigType::from(0) {
             return unsafe {
                 *buffer = b'0';
@@ -1033,18 +1004,28 @@ where
                 buffer.add(3)
             };
         }
-        to_decimal_schubfach::<true, Float::SigType>(
-            bin_sig,
-            i64::from(1 - Float::EXP_OFFSET),
-            true,
-        )
+        dec = to_decimal_schubfach(bin_sig, i64::from(1 - Float::EXP_OFFSET), true);
+        while dec.sig
+            < if Float::NUM_BITS == 64 {
+                10_000_000_000_000_000
+            } else {
+                100_000_000
+            }
+        {
+            dec.sig *= 10;
+            dec.exp -= 1;
+        }
+        #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
+        {
+            dec.sig_div10 = dec.sig / 10;
+        }
     } else {
-        to_decimal_normal::<Float, Float::SigType>(
+        dec = to_decimal_normal::<Float, Float::SigType>(
             bin_sig | Float::IMPLICIT_BIT,
             bin_exp,
             bin_sig != Float::SigType::from(0),
-        )
-    };
+        );
+    }
     let mut dec_exp = dec.exp;
 
     // Write significand.
