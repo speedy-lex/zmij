@@ -492,11 +492,10 @@ unsafe fn write_significand17(
         all(target_arch = "x86_64", target_feature = "sse2", not(miri)),
     )))]
     {
-        let start = unsafe { buffer.add(1) };
         // Digits/pairs of digits are denoted by letters: value = abbccddeeffgghhii.
         let abbccddee = (value / 100_000_000) as u32;
         let ffgghhii = (value % 100_000_000) as u32;
-        buffer = unsafe { write_if(start, abbccddee / 100_000_000, has17digits) };
+        buffer = unsafe { write_if(buffer, abbccddee / 100_000_000, has17digits) };
         let bcd = to_bcd8(u64::from(abbccddee % 100_000_000));
         unsafe {
             write8(buffer, bcd | ZEROS);
@@ -567,8 +566,7 @@ unsafe fn write_significand17(
         let a = (umul128(abbccddee, c.mul_const) >> 90) as u64;
         let bbccddee = abbccddee - a * hundred_million;
 
-        let start = unsafe { buffer.add(1) };
-        buffer = unsafe { write_if(start, a as u32, has17digits) };
+        buffer = unsafe { write_if(buffer, a as u32, has17digits) };
 
         unsafe {
             let ffgghhii_bbccddee_64: uint64x1_t =
@@ -1034,7 +1032,7 @@ where
         dec_exp += Float::MAX_DIGITS10 as i32 - 2 + i32::from(has17digits);
         unsafe {
             write_significand17(
-                buffer,
+                buffer.add(1),
                 dec.sig as u64,
                 has17digits,
                 #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
