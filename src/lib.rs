@@ -471,7 +471,7 @@ unsafe fn write_significand9(mut buffer: *mut u8, value: u32, has9digits: bool) 
     buffer = unsafe { write_if(buffer, value / 100_000_000, has9digits) };
     let bcd = to_bcd8(u64::from(value % 100_000_000));
     unsafe {
-        write8(buffer, bcd | ZEROS);
+        write8(buffer, bcd + ZEROS);
         buffer.add(count_trailing_nonzeros(bcd))
     }
 }
@@ -498,14 +498,14 @@ unsafe fn write_significand17(
         buffer = unsafe { write_if(buffer, abbccddee / 100_000_000, has17digits) };
         let bcd = to_bcd8(u64::from(abbccddee % 100_000_000));
         unsafe {
-            write8(buffer, bcd | ZEROS);
+            write8(buffer, bcd + ZEROS);
         }
         if ffgghhii == 0 {
             return unsafe { buffer.add(count_trailing_nonzeros(bcd)) };
         }
         let bcd = to_bcd8(u64::from(ffgghhii));
         unsafe {
-            write8(buffer.add(8), bcd | ZEROS);
+            write8(buffer.add(8), bcd + ZEROS);
             buffer.add(8).add(count_trailing_nonzeros(bcd))
         }
     }
