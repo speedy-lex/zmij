@@ -473,7 +473,9 @@ unsafe fn write_significand<Float>(
     mut buffer: *mut u8,
     value: u64,
     extra_digit: bool,
-    #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))] value_div10: i64,
+    #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
+    #[allow(unused_variables)]
+    value_div10: i64,
 ) -> *mut u8
 where
     Float: FloatTraits,
@@ -631,19 +633,12 @@ where
     {
         use crate::stdarch_x86::*;
 
-        let last_digit = (value - value_div10 as u64 * 10) as u32;
+        let abbccddee = (value / 100_000_000) as u32;
+        let ffgghhii = (value % 100_000_000) as u32;
+        let a = abbccddee / 100_000_000;
+        let bbccddee = abbccddee % 100_000_000;
 
-        // We always write 17 digits into the buffer, but the first one can be
-        // zero. buffer points to the second place in the output buffer to allow
-        // for the insertion of the decimal point, so we can use the first place
-        // as scratch.
-        buffer = unsafe { buffer.offset(isize::from(extra_digit) - 1) };
-        unsafe {
-            *buffer.add(16) = last_digit as u8 + b'0';
-        }
-
-        let abcdefgh = (value_div10 / 100_000_000) as u32;
-        let ijklmnop = (value_div10 % 100_000_000) as u32;
+        buffer = unsafe { write_if(buffer, a, extra_digit) };
 
         #[repr(C, align(64))]
         struct Consts {
@@ -731,9 +726,9 @@ where
         let moddiv10 = unsafe { _mm_load_si128(ptr::addr_of!((*c).moddiv10).cast::<__m128i>()) };
         let zeros = unsafe { _mm_load_si128(ptr::addr_of!((*c).zeros).cast::<__m128i>()) };
 
-        // The BCD sequences are based on the ones provided by Xiang JunBo.
+        // The BCD sequences are based on ones provided by Xiang JunBo.
         unsafe {
-            let x: __m128i = _mm_set_epi64x(i64::from(abcdefgh), i64::from(ijklmnop));
+            let x: __m128i = _mm_set_epi64x(i64::from(bbccddee), i64::from(ffgghhii));
             let y: __m128i = _mm_add_epi64(
                 x,
                 _mm_mul_epu32(neg10k, _mm_srli_epi64(_mm_mul_epu32(x, div10k), DIV10K_EXP)),
@@ -769,15 +764,10 @@ where
             // Count leading zeros.
             let mask128: __m128i = _mm_cmpgt_epi8(bcd, _mm_setzero_si128());
             let mask = _mm_movemask_epi8(mask128) as u32;
-            // We don't need a zero-check here: if the mask were zero, either
-            // the significand is zero which is handled elsewhere or the only
-            // non-zero digit is the last digit which we factored off. But in
-            // that case the number would be printed with a different exponent
-            // that shifts the last digit into the first position.
             let len = 32 - mask.leading_zeros() as usize;
 
             _mm_storeu_si128(buffer.cast::<__m128i>(), digits);
-            buffer.add(if last_digit != 0 { 17 } else { len })
+            buffer.add(len)
         }
     }
 }
