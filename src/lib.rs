@@ -469,14 +469,7 @@ unsafe fn write8(buffer: *mut u8, value: u64) {
 // (8-9 for normals) for float. The significant digits start from buffer[1].
 // buffer[0] may contain '0' after this function if the leading digit is zero.
 #[cfg_attr(feature = "no-panic", no_panic)]
-unsafe fn write_significand<Float>(
-    mut buffer: *mut u8,
-    value: u64,
-    extra_digit: bool,
-    #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-    #[allow(unused_variables)]
-    value_div10: i64,
-) -> *mut u8
+unsafe fn write_significand<Float>(mut buffer: *mut u8, value: u64, extra_digit: bool) -> *mut u8
 where
     Float: FloatTraits,
 {
@@ -775,8 +768,6 @@ where
 struct ToDecimalResult {
     sig: i64,
     exp: i32,
-    #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-    sig_div10: i64,
 }
 
 #[cfg_attr(feature = "no-panic", no_panic)]
@@ -814,13 +805,10 @@ where
     let div10 = (upper >> BOUND_SHIFT) / UInt::from(10);
     let shorter = div10 * UInt::from(10);
     if (shorter << BOUND_SHIFT) >= lower {
-        let result = ToDecimalResult {
+        return ToDecimalResult {
             sig: shorter.into() as i64,
             exp: dec_exp,
-            #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-            sig_div10: div10.into() as i64,
         };
-        return result;
     }
 
     let scaled_sig = umulhi_inexact_to_odd(pow10.hi, pow10.lo, bin_sig_shifted << exp_shift);
@@ -843,8 +831,6 @@ where
     ToDecimalResult {
         sig: dec_sig.into() as i64,
         exp: dec_exp,
-        #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-        sig_div10: (dec_sig / UInt::from(10)).into() as i64,
     }
 }
 
@@ -956,8 +942,6 @@ where
             return ToDecimalResult {
                 sig: hint::select_unpredictable(round_up, shorter + 10, dec_sig),
                 exp: dec_exp,
-                #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-                sig_div10: 0,
             };
         }
         shorter += i64::from(round_up) * 10;
@@ -965,8 +949,6 @@ where
         return ToDecimalResult {
             sig: hint::select_unpredictable(use_shorter, shorter, longer),
             exp: dec_exp,
-            #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-            sig_div10: div10 as i64 + i64::from(use_shorter) * i64::from(round_up),
         };
     }
     to_decimal_schubfach(bin_sig, bin_exp, regular)
@@ -1009,10 +991,6 @@ where
             dec.sig *= 10;
             dec.exp -= 1;
         }
-        #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-        {
-            dec.sig_div10 = dec.sig / 10;
-        }
     } else {
         dec = to_decimal_fast::<Float, Float::SigType>(
             bin_sig | Float::IMPLICIT_BIT,
@@ -1029,15 +1007,7 @@ where
     }
 
     // Write significand.
-    let end = unsafe {
-        write_significand::<Float>(
-            buffer.add(1),
-            dec.sig as u64,
-            extra_digit,
-            #[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(miri)))]
-            dec.sig_div10,
-        )
-    };
+    let end = unsafe { write_significand::<Float>(buffer.add(1), dec.sig as u64, extra_digit) };
 
     let length = unsafe { end.offset_from(buffer.add(1)) } as usize;
 
