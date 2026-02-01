@@ -928,10 +928,9 @@ where
 
         // Check for boundary case when rounding down to nearest 10 and
         // near-boundary case when rounding up to nearest 10.
-        if scaled_sig_mod10 == scaled_half_ulp
-            // Case where upper == ten is insufficient: 1.342178e+08f.
-            // upper == ten || upper == ten - 1
-            || ten.wrapping_sub(upper) <= 1
+        // Case where upper == ten is insufficient: 1.342178e+08f.
+        if ten.wrapping_sub(upper) <= 1 // upper == ten || upper == ten - 1
+            || scaled_sig_mod10 == scaled_half_ulp
         {
             break;
         }
