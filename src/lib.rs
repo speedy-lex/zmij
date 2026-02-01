@@ -938,21 +938,12 @@ where
         }
 
         let round_up = upper >= ten;
-        let mut shorter = (integral.into() - digit) as i64;
+        let shorter = (integral.into() - digit) as i64;
         let longer = (integral.into() + u64::from(cmp >= 0)) as i64;
-        if cfg!(target_arch = "aarch64") {
-            // Faster version without ccmp.
-            let dec_sig =
-                hint::select_unpredictable(scaled_sig_mod10 < scaled_half_ulp, shorter, longer);
-            return ToDecimalResult {
-                sig: hint::select_unpredictable(round_up, shorter + 10, dec_sig),
-                exp: dec_exp,
-            };
-        }
-        shorter += i64::from(round_up) * 10;
-        let use_shorter = scaled_sig_mod10 <= scaled_half_ulp || round_up;
+        let dec_sig =
+            hint::select_unpredictable(scaled_sig_mod10 < scaled_half_ulp, shorter, longer);
         return ToDecimalResult {
-            sig: hint::select_unpredictable(use_shorter, shorter, longer),
+            sig: hint::select_unpredictable(round_up, shorter + 10, dec_sig),
             exp: dec_exp,
         };
     }
