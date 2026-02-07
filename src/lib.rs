@@ -192,12 +192,14 @@ impl FloatTraits for f64 {
 
 #[repr(C, align(64))]
 struct Pow10SignificandsTable {
-    data: [u64; Self::NUM_POW10 * 2],
+    data: [u64; (Self::NUM_POW10 / Self::COMPRESSION_RATIO + Self::COMPRESS as usize) * 2],
 }
 
 impl Pow10SignificandsTable {
+    const COMPRESS: bool = false;
     const SPLIT_TABLES: bool = cfg!(target_arch = "aarch64");
     const NUM_POW10: usize = 617;
+    const COMPRESSION_RATIO: usize = if Self::COMPRESS { 27 } else { 1 };
 
     unsafe fn get_unchecked(&self, dec_exp: i32) -> uint128 {
         const DEC_EXP_MIN: i32 = -292;
@@ -245,7 +247,10 @@ impl Pow10SignificandsTable {
 // 128-bit significands of powers of 10 rounded down.
 // Generated using 192-bit arithmetic method by Dougall Johnson.
 static POW10_SIGNIFICANDS: Pow10SignificandsTable = {
-    let mut data = [0; Pow10SignificandsTable::NUM_POW10 * 2];
+    let mut data = [0; (Pow10SignificandsTable::NUM_POW10
+        / Pow10SignificandsTable::COMPRESSION_RATIO
+        + Pow10SignificandsTable::COMPRESS as usize)
+        * 2];
 
     struct uint192 {
         w0: u64, // least significant
@@ -261,14 +266,18 @@ static POW10_SIGNIFICANDS: Pow10SignificandsTable = {
         w2: 0xff77b1fcbebcdc4f,
     };
     let ten = 0xa000000000000000;
+    let table_size = data.len() / 2;
     let mut i = 0;
     while i < Pow10SignificandsTable::NUM_POW10 {
-        if Pow10SignificandsTable::SPLIT_TABLES {
-            data[Pow10SignificandsTable::NUM_POW10 - i - 1] = current.w2;
-            data[Pow10SignificandsTable::NUM_POW10 * 2 - i - 1] = current.w1;
-        } else {
-            data[i * 2] = current.w2;
-            data[i * 2 + 1] = current.w1;
+        if i % Pow10SignificandsTable::COMPRESSION_RATIO == 0 {
+            let index = i / Pow10SignificandsTable::COMPRESSION_RATIO;
+            if Pow10SignificandsTable::SPLIT_TABLES {
+                data[table_size - index - 1] = current.w2;
+                data[table_size * 2 - index - 1] = current.w1;
+            } else {
+                data[index * 2] = current.w2;
+                data[index * 2 + 1] = current.w1;
+            }
         }
 
         let h0: u64 = umul128_hi64(current.w0, ten);
