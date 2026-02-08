@@ -6,7 +6,7 @@ const _: () = {
     let static_data =
         mem::size_of_val(&crate::POW10_SIGNIFICANDS) + mem::size_of_val(&crate::DIGITS2);
     if crate::Pow10SignificandsTable::COMPRESS {
-        assert!(static_data == 584);
+        assert!(static_data == 264);
     } else {
         assert!(static_data == 10120); // 9.9K
     }
