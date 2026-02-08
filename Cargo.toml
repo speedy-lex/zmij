@@ -20,7 +20,7 @@ num-bigint = "0.4"
 num_cpus = "1.8"
 num-integer = "0.1"
 opt-level = "1"
-rand = "0.9"
+rand = "0.10"
 ryu = "1"
 
 [target.'cfg(not(miri))'.dev-dependencies]
