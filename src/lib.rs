@@ -210,7 +210,7 @@ impl Pow10SignificandsTable {
     // Computes the 128-bit significand of 10**i using method by Dougall Johnson.
     const fn compute(i: u32) -> uint128 {
         #[rustfmt::skip]
-        static POW10S: [u64; 28] = [
+        const POW10S: [u64; 28] = [
             0x8000000000000000, 0xa000000000000000, 0xc800000000000000,
             0xfa00000000000000, 0x9c40000000000000, 0xc350000000000000,
             0xf424000000000000, 0x9896800000000000, 0xbebc200000000000,
@@ -224,7 +224,7 @@ impl Pow10SignificandsTable {
         ];
 
         #[rustfmt::skip]
-        static HIGH_PARTS: [uint128; 23] = [
+        const HIGH_PARTS: [uint128; 23] = [
             uint128 { hi: 0xaf8e5410288e1b6f, lo: 0x07ecf0ae5ee44dda },
             uint128 { hi: 0xb1442798f49ffb4a, lo: 0x99cd11cfdf41779d },
             uint128 { hi: 0xb2fe3f0b8599ef07, lo: 0x861fa7e6dcb4aa15 },
@@ -251,7 +251,7 @@ impl Pow10SignificandsTable {
         ];
 
         #[rustfmt::skip]
-        static FIXUPS: [u32; 20] = [
+        const FIXUPS: [u32; 20] = [
             0x05271b1f, 0x00000c20, 0x00003200, 0x12100020,
             0x00000000, 0x06000000, 0xc16409c0, 0xaf26700f,
             0xeb987b07, 0x0000000d, 0x00000000, 0x66fbfffe,
