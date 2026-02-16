@@ -8,6 +8,13 @@ pub trait Float: Copy {
     const MAX_DIGITS10: u32;
 }
 
+impl Float for f16 {
+    const MANTISSA_DIGITS: u32 = Self::MANTISSA_DIGITS;
+    const MIN_10_EXP: i32 = Self::MIN_10_EXP;
+    const MAX_10_EXP: i32 = Self::MAX_10_EXP;
+    const MAX_DIGITS10: u32 = 5;
+}
+
 impl Float for f32 {
     const MANTISSA_DIGITS: u32 = Self::MANTISSA_DIGITS;
     const MIN_10_EXP: i32 = Self::MIN_10_EXP;
@@ -48,6 +55,25 @@ pub trait UInt:
     fn truncate(big: u64) -> Self;
     fn enlarge(small: u32) -> Self;
     fn to_signed(self) -> Self::Signed;
+}
+
+impl UInt for u16 {
+    type Signed = i16;
+    fn wrapping_sub(self, other: Self) -> Self {
+        self.wrapping_sub(other)
+    }
+
+    fn truncate(big: u64) -> Self {
+        big as u16
+    }
+
+    fn enlarge(small: u32) -> Self {
+        small as u16
+    }
+
+    fn to_signed(self) -> Self::Signed {
+        self as i16
+    }
 }
 
 impl UInt for u32 {

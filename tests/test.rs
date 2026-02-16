@@ -1,10 +1,15 @@
 #![allow(clippy::float_cmp, clippy::unreadable_literal)]
+#![feature(f16)]
 
 fn dtoa(value: f64) -> String {
     zmij::Buffer::new().format(value).to_owned()
 }
 
 fn ftoa(value: f32) -> String {
+    zmij::Buffer::new().format(value).to_owned()
+}
+
+fn htoa(value: f16) -> String {
     zmij::Buffer::new().format(value).to_owned()
 }
 
@@ -117,5 +122,14 @@ mod ftoa_test {
     #[test]
     fn no_buffer() {
         assert_eq!(ftoa(6.62607e-34), "6.62607e-34");
+    }
+}
+
+mod htoa_test {
+    use super::htoa;
+
+    #[test]
+    fn normal() {
+        assert_eq!(htoa(1.282), "1.282")
     }
 }
